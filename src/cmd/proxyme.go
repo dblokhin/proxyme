@@ -7,7 +7,7 @@ package main
 import (
 	"log"
 	"server"
-	"protocols"
+	"sock"
 	"os"
 )
 
@@ -22,6 +22,7 @@ func init() {
 
 // Staring main program here.
 // proxyme is so easy!
+
 func main() {
 	log.Println("Starting golang proxyme")
 
@@ -30,8 +31,10 @@ func main() {
 	listenAddr := "localhost:8080"
 
 	// init ident methods (see sock5, http://www.ietf.org/rfc/rfc1928.txt)
-	idents := make([]protocols.Identifier, 0)
-	idents = append(idents, protocols.Login{})
+	idents := make([]sock.Identifier, 0)
+	idents = append(idents, sock.Login{
+		HardcodeValidator{},
+	})
 
 	// init server structure
 	proxyme := server.ProxymeServer{
@@ -43,4 +46,18 @@ func main() {
 	if err := proxyme.Start(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// HardcodeValidator is just simple example validator of username/pass identity.
+// Validator should impl LoginValidator interface (see login.go)
+type HardcodeValidator struct {}
+
+// PasswordByLogin the main goal of validator: returns pwd of given login
+func (hc HardcodeValidator) PasswordByLogin(login string) string {
+	if login == "guest" {
+		return "guest"
+	}
+
+	// the zero-lenght pass is invalid pass (see login.go)
+	return ""
 }

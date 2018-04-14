@@ -2,7 +2,7 @@
 // Author Dmitriy Blokhin. All rights reserved.
 // License can be found in the LICENSE file.
 
-package protocols
+package sock
 
 import (
 	"net"
@@ -48,7 +48,7 @@ func (a Login) Identify(conn net.Conn) error {
 		return err
 	}
 
-	if a.Validator.PasswordByLogin(request.Login) == request.Passwd {
+	if len(request.Passwd) != 0 && a.Validator.PasswordByLogin(request.Login) == request.Passwd {
 		// Granted
 		reply.Status = loginStatusSuccess
 		reply.Send(conn)

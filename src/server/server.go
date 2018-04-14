@@ -6,12 +6,12 @@ package server
 
 import (
 	"net"
-	"protocols"
+	"sock"
 )
 
 type ProxymeServer struct {
 	ListenAddr string
-	Idents []protocols.Identifier
+	Idents []sock.Identifier
 }
 
 func (s *ProxymeServer) Start() error {
@@ -28,6 +28,6 @@ func (s *ProxymeServer) Start() error {
 		}
 
 		// processes new client
-		go protocols.NewClient(conn, s.Idents)
+		go sock.NewClient(conn, s.Idents)
 	}
 }
