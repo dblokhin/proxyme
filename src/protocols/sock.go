@@ -11,14 +11,18 @@ import (
 	"ident"
 )
 
+const (
+	// identical method ids
+	SOCK4Version uint8 = 4
+	SOCK5Version uint8 = 5
+)
+
 // Client structure represents each connected client
 type Client struct {
-	Conn net.Conn
-	SocketVersion int8
-
+	Conn          net.Conn
+	SocketVersion uint8
+	IdentMethod   ident.Identifier
 }
-
-
 
 // NewClient processes new incoming connection
 func NewClient(conn net.Conn, idents []ident.Identifier) {
@@ -27,22 +31,31 @@ func NewClient(conn net.Conn, idents []ident.Identifier) {
 	}
 
 	// read the sock version first
-	if err := binary.Read(cli.Conn, binary.BigEndian,  &cli.SocketVersion); err != nil {
+	if err := binary.Read(cli.Conn, binary.BigEndian, &cli.SocketVersion); err != nil {
 		log.Println(err)
 		return
 	}
 
 	switch cli.SocketVersion {
-	case 4:	// TODO: impl
+	case SOCK4Version: // TODO: impl
+		log.Println("not supported yet")
+		conn.Close()
 		break
-	case 5:
-		// identity first
-		if err := sock5Identity(cli, idents); err != nil {
+
+	case SOCK5Version:
+		// get identity method first
+		if err := sock5IdentityMethod(&cli, idents); err != nil {
 			log.Println(err)
 			conn.Close()
 		}
 
-		//
+		// identity client
+		if err := cli.IdentMethod.Identify(cli.Conn); err != nil {
+			log.Println(err)
+			conn.Close()
+		}
+
+		// getting CONNECT or BIND
 
 	default:
 		conn.Close()

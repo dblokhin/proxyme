@@ -4,16 +4,26 @@
 
 package ident
 
+import (
+	"net"
+	"errors"
+)
+
 const (
 	// identical method ids
-	SOCK5NoAuth int8 = 0
-	SOCK5GSSAPI      = 1
-	SOCK5Login       = 2
+	SOCK5NoAuth     uint8 = 0
+	SOCK5GSSAPI     uint8 = 1
+	SOCK5Login      uint8 = 2
+	SOCK5IdentError uint8 = 0xff
 )
+
+var errAccessDenied = errors.New("access denied")
 
 // Identifier is possible method identify
 type Identifier interface {
 	// ID is identical method id
-	ID() int8
-	Auth() bool
+	ID() uint8
+
+	// Identify client, returns nonerror if identity successful
+	Identify(conn net.Conn) error
 }

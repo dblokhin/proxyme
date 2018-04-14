@@ -17,7 +17,7 @@ type ProxymeServer struct {
 
 func (s *ProxymeServer) Start() error {
 	// TODO: listener from ENV. VARIABLES
-	listener, err := net.Listen("tcp4", "0:8080")
+	listener, err := net.Listen("tcp4", "localhost:8080")
 	if err != nil {
 		return err
 	}

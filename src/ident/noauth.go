@@ -4,15 +4,17 @@
 
 package ident
 
+import "net"
+
 // NoAuth ident method without auth
 type NoAuth struct {}
 
 // ID is identical method id
-func (a NoAuth) ID() int8 {
+func (a NoAuth) ID() uint8 {
 	return SOCK5NoAuth
 }
 
-// Auth authorization proc
-func (a NoAuth) Auth() bool {
-	return true
+// Identify authorization proc
+func (a NoAuth) Identify(conn net.Conn) error {
+	return nil
 }

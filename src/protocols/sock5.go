@@ -13,7 +13,8 @@ import (
 
 // SOCK5 RFC: http://www.ietf.org/rfc/rfc1928.txt
 
-func sock5Identity(client Client, approved []ident.Identifier) error {
+// sock5IdentityMethod gets client ident methods & select one
+func sock5IdentityMethod(client *Client, approved []ident.Identifier) error {
 
 	// read the first message
 	var request identRequest
@@ -21,38 +22,39 @@ func sock5Identity(client Client, approved []ident.Identifier) error {
 		return err
 	}
 
-	// define ident method
-	var identify ident.Identifier
-
+	// determine ident method
+	var determined bool
 	check:
 	for _, methodID := range request.Methods {
-		for _, ident := range approved {
+		for _, identMethod := range approved {
 
-			if ident.ID() ==  methodID {
-				identify = ident
+			if identMethod.ID() ==  methodID {
+				client.IdentMethod = identMethod
+				determined = true
 				break check
 			}
 		}
 	}
 
-	// send selected method
-	var resp identResp
-	resp.ID = identify.ID()
-	resp.Send(client.Conn)
 
-	// identify client
-	if !identify.Auth() {
-		return errors.New("access denied")
+	var resp identResp
+
+	if !determined {
+		// send error no ident to client
+		resp.ID = ident.SOCK5IdentError
+		return errors.New("no selected ident method")
 	}
 
-	return nil
+	// send selected method
+	resp.ID = client.IdentMethod.ID()
+	return resp.Send(client.Conn)
 }
 
 // identRequest is the first message from sock5 client
 // represents identifier/method selection message
 type identRequest struct {
-	NMethods int8
-	Methods []int8
+	NMethods uint8
+	Methods []uint8
 }
 
 // Read sock5 identifier/method selection message
@@ -61,7 +63,7 @@ func (h *identRequest) Read(r io.Reader) error {
 		return err
 	}
 
-	h.Methods = make([]int8, h.NMethods)
+	h.Methods = make([]uint8, h.NMethods)
 	if err := binary.Read(r, binary.BigEndian,  h.Methods); err != nil {
 		return err
 	}
@@ -71,13 +73,13 @@ func (h *identRequest) Read(r io.Reader) error {
 
 // identResp responce structure on requesting iden method
 type identResp struct {
-	ID int8
+	ID uint8
 }
 
 // Send response to client
 func (m *identResp) Send(w io.Writer) error {
 	// write sock5 version
-	if err := binary.Write(w, binary.BigEndian, int8(5)); err != nil {
+	if err := binary.Write(w, binary.BigEndian, SOCK5Version); err != nil {
 		return err
 	}
 
