@@ -7,7 +7,6 @@ package protocols
 import (
 	"io"
 	"encoding/binary"
-	"ident"
 	"errors"
 	"net"
 )
@@ -21,7 +20,7 @@ const (
 )
 
 // sock5IdentityMethod gets client ident methods & select one
-func sock5IdentityMethod(client *Client, approved []ident.Identifier) error {
+func sock5IdentityMethod(client *Client, approved []Identifier) error {
 
 	// read the first message
 	var request identRequest
@@ -44,10 +43,9 @@ check:
 	}
 
 	var resp identResp
-
 	if !determined {
 		// send error no ident to client
-		resp.ID = ident.SOCK5IdentError
+		resp.ID = SOCK5IdentError
 		return errors.New("no selected ident method")
 	}
 

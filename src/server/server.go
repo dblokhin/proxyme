@@ -5,19 +5,18 @@
 package server
 
 import (
-	"ident"
 	"net"
 	"protocols"
 )
 
 type ProxymeServer struct {
 	ListenAddr string
-	Idents []ident.Identifier
+	Idents []protocols.Identifier
 }
 
 func (s *ProxymeServer) Start() error {
 	// TODO: listener from ENV. VARIABLES
-	listener, err := net.Listen("tcp4", "localhost:8080")
+	listener, err := net.Listen("tcp4", s.ListenAddr)
 	if err != nil {
 		return err
 	}

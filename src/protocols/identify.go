@@ -2,7 +2,7 @@
 // Author Dmitriy Blokhin. All rights reserved.
 // License can be found in the LICENSE file.
 
-package ident
+package protocols
 
 import (
 	"net"

@@ -7,7 +7,7 @@ package main
 import (
 	"log"
 	"server"
-	"ident"
+	"protocols"
 	"os"
 )
 
@@ -23,13 +23,15 @@ func init() {
 // Staring main program here.
 // proxyme is so easy!
 func main() {
+	log.Println("Starting golang proxyme")
+
 	// setting up listen addr
 	// TODO: from env. vars
-	listenAddr := "0:8080"
+	listenAddr := "localhost:8080"
 
 	// init ident methods (see sock5, http://www.ietf.org/rfc/rfc1928.txt)
-	idents := make([]ident.Identifier, 0)
-	idents = append(idents, ident.NoAuth{})
+	idents := make([]protocols.Identifier, 0)
+	idents = append(idents, protocols.Login{})
 
 	// init server structure
 	proxyme := server.ProxymeServer{

@@ -8,7 +8,6 @@ import (
 	"net"
 	"encoding/binary"
 	"log"
-	"ident"
 	"errors"
 	"io"
 	"sync"
@@ -43,11 +42,11 @@ type Client struct {
 	Conn          net.Conn
 	RemoteConn    net.Conn
 	SocketVersion uint8
-	IdentMethod   ident.Identifier
+	IdentMethod   Identifier
 }
 
 // NewClient processes new incoming connection
-func NewClient(conn net.Conn, idents []ident.Identifier) {
+func NewClient(conn net.Conn, idents []Identifier) {
 	cli := Client{
 		Conn: conn,
 	}
@@ -69,6 +68,7 @@ func NewClient(conn net.Conn, idents []ident.Identifier) {
 		if err := sock5IdentityMethod(&cli, idents); err != nil {
 			log.Println(err)
 			conn.Close()
+			return
 		}
 
 		// identity client
@@ -153,10 +153,6 @@ func NewClient(conn net.Conn, idents []ident.Identifier) {
 			conn.Close()
 			return
 		}
-		// send response
-
-		log.Printf("%V\n", req)
-		log.Println(req.Addr.String())
 
 	default:
 		conn.Close()
