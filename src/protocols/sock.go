@@ -11,6 +11,7 @@ import (
 	"ident"
 	"errors"
 	"io"
+	"sync"
 )
 
 const (
@@ -40,6 +41,7 @@ var errResolvingDomain = errors.New("resolving domain error")
 // Client structure represents each connected client
 type Client struct {
 	Conn          net.Conn
+	RemoteConn    net.Conn
 	SocketVersion uint8
 	IdentMethod   ident.Identifier
 }
@@ -108,10 +110,42 @@ func NewClient(conn net.Conn, idents []ident.Identifier) {
 			// fill bnd addr
 			reply.Addr = conn.LocalAddr().(*net.TCPAddr)
 			reply.Send(cli.Conn)
+			cli.RemoteConn = conn
 
-			// connect two streams: cli.conn & conn
+			var wg sync.WaitGroup
+			wg.Add(2)
+			// connect two streams: cli.Conn & conn
+			// from client streaming
+			go func() {
+				buff := make([]byte, 4*1024)
+				for {
+					if _, err := io.CopyBuffer(cli.RemoteConn, cli.Conn, buff); err != nil {
+						log.Println(err)
+						break
+					}
+				}
 
+				cli.Conn.Close()
+				cli.RemoteConn.Close()
+				wg.Done()
+			}()
 
+			// from remote streaming
+			go func() {
+				buff := make([]byte, 48*1024)
+				for {
+					if _, err := io.CopyBuffer(cli.Conn, cli.RemoteConn, buff); err != nil {
+						log.Println(err)
+						break
+					}
+				}
+
+				cli.Conn.Close()
+				cli.RemoteConn.Close()
+				wg.Done()
+			}()
+
+			wg.Wait()
 
 		default:
 			reply.REP = SOCK5StatusNotSupported
