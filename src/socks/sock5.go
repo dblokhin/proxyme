@@ -2,7 +2,7 @@
 // Author Dmitriy Blokhin. All rights reserved.
 // License can be found in the LICENSE file.
 
-package sock
+package socks
 
 import (
 	"io"
@@ -68,8 +68,10 @@ func (h *identRequest) Read(r io.Reader) error {
 	}
 
 	h.Methods = make([]uint8, h.NMethods)
-	if err := binary.Read(r, binary.BigEndian, h.Methods); err != nil {
-		return err
+	for i := 0; i < int(h.NMethods); i++ {
+		if err := binary.Read(r, binary.BigEndian, &h.Methods[i]); err != nil {
+			return err
+		}
 	}
 
 	return nil

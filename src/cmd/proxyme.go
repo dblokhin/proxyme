@@ -7,7 +7,7 @@ package main
 import (
 	"log"
 	"server"
-	"sock"
+	"socks"
 	"os"
 )
 
@@ -31,10 +31,15 @@ func main() {
 	listenAddr := "localhost:8080"
 
 	// init ident methods (see sock5, http://www.ietf.org/rfc/rfc1928.txt)
-	idents := make([]sock.Identifier, 0)
-	idents = append(idents, sock.Login{
+	idents := make([]socks.Identifier, 0)
+
+	// adding username/pass identity
+	idents = append(idents, socks.Login{
 		HardcodeValidator{},
 	})
+
+	// adding without auth identity
+	idents = append(idents, socks.NoAuth{})
 
 	// init server structure
 	proxyme := server.ProxymeServer{
