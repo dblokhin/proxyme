@@ -8,13 +8,13 @@ package socks
 
 const (
 	// buff size from client to remote
-	incomingClientBufferSize int = 4 * 1024
+	clientBufferSize int = 2 * 1024
 	// buff size to client from remote
-	outcomingClientBufferSize = 48 * 1024
+	hostBufferSize = 32 * 1024
 )
 
 var (
-	incomingBuff, outcomingBuff reBuffer
+	clientBuff, hostBuff reBuffer
 )
 
 // reBuffer allows reuse buffers
@@ -63,17 +63,17 @@ func (rb *reBuffer) Put(b []byte) {
 }
 
 func init() {
-	incomingBuff = reBuffer{
+	clientBuff = reBuffer{
 		queue:    make(chan []byte, 100),
 		size: 0,
-		maxSize:  1000,
-		buffSize: 2 * 1024,
+		maxSize:  100,
+		buffSize: clientBufferSize,
 	}
 
-	outcomingBuff = reBuffer{
+	hostBuff = reBuffer{
 		queue:    make(chan []byte, 100),
 		size: 0,
-		maxSize:  1000,
-		buffSize: 32 * 1024,
+		maxSize:  100,
+		buffSize: hostBufferSize,
 	}
 }

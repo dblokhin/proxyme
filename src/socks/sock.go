@@ -11,6 +11,7 @@ import (
 	"errors"
 	"io"
 	"sync"
+	"strings"
 )
 
 const (
@@ -94,6 +95,7 @@ func NewClient(conn net.Conn, idents []Identifier) {
 		conn, err := net.Dial("tcp", req.Addr.String())
 		if err != nil {
 			reply.REP = SOCK5StatusSockFailure
+			reply.Addr = cli.Conn.LocalAddr().(*net.TCPAddr)
 
 			if nerr, ok := err.(net.Error); ok {
 				if nerr.Timeout() {
@@ -101,8 +103,6 @@ func NewClient(conn net.Conn, idents []Identifier) {
 				}
 			}
 
-			reply.Send(cli.Conn)
-			conn.Close()
 			return
 		}
 
@@ -116,18 +116,18 @@ func NewClient(conn net.Conn, idents []Identifier) {
 		// connect two streams: cli.Conn & conn
 		// from client streaming
 		go func() {
-			buff := incomingBuff.Get()
+			buff := clientBuff.Get()
 			ioCopyBuff(cli.RemoteConn, cli.Conn, buff)
-			incomingBuff.Put(buff)
+			clientBuff.Put(buff)
 
 			wg.Done()
 		}()
 
 		// from remote streaming
 		go func() {
-			buff := outcomingBuff.Get()
+			buff := hostBuff.Get()
 			ioCopyBuff(cli.Conn, cli.RemoteConn, buff)
-			outcomingBuff.Put(buff)
+			hostBuff.Put(buff)
 
 			wg.Done()
 		}()
@@ -147,7 +147,9 @@ func ioCopyBuff(dst net.Conn, src net.Conn, buff []byte) {
 	stream := io.TeeReader(src, dst)
 	for {
 		if _, err := stream.Read(buff); err != nil {
-			if err != io.EOF {
+			if err != io.EOF &&
+				!strings.Contains(err.Error(), "use of closed network connection") &&
+				!strings.Contains(err.Error(), "connection reset by peer")	{
 				log.Println(err)
 			}
 
