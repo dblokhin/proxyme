@@ -116,35 +116,19 @@ func NewClient(conn net.Conn, idents []Identifier) {
 		// connect two streams: cli.Conn & conn
 		// from client streaming
 		go func() {
-			buff := make([]byte, 4*1024)
-			for {
-				if _, err := io.CopyBuffer(cli.RemoteConn, cli.Conn, buff); err != nil {
-					if err != io.EOF {
-						log.Println(err)
-					}
-					break
-				}
-			}
+			buff := incomingBuff.Get()
+			ioCopyBuff(cli.RemoteConn, cli.Conn, buff)
+			incomingBuff.Put(buff)
 
-			cli.Conn.Close()
-			cli.RemoteConn.Close()
 			wg.Done()
 		}()
 
 		// from remote streaming
 		go func() {
-			buff := make([]byte, 48*1024)
-			for {
-				if _, err := io.CopyBuffer(cli.Conn, cli.RemoteConn, buff); err != nil {
-					if err != io.EOF {
-						log.Println(err)
-					}
-					break
-				}
-			}
+			buff := outcomingBuff.Get()
+			ioCopyBuff(cli.Conn, cli.RemoteConn, buff)
+			outcomingBuff.Put(buff)
 
-			cli.Conn.Close()
-			cli.RemoteConn.Close()
 			wg.Done()
 		}()
 
@@ -156,4 +140,21 @@ func NewClient(conn net.Conn, idents []Identifier) {
 		conn.Close()
 		return
 	}
+}
+
+func ioCopyBuff(dst net.Conn, src net.Conn, buff []byte) {
+
+	stream := io.TeeReader(src, dst)
+	for {
+		if _, err := stream.Read(buff); err != nil {
+			if err != io.EOF {
+				log.Println(err)
+			}
+
+			break
+		}
+	}
+
+	dst.Close()
+	src.Close()
 }

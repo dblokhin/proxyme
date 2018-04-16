@@ -9,6 +9,8 @@ import (
 	"server"
 	"socks"
 	"os"
+	_ "net/http/pprof"
+	"net/http"
 )
 
 func init() {
@@ -22,9 +24,9 @@ func init() {
 
 // Staring main program here.
 // proxyme is so easy!
-
 func main() {
 	log.Println("Starting golang proxyme")
+	go http.ListenAndServe("0.0.0.0:8081", nil)
 
 	// setting up listen addr
 	// TODO: from env. vars
