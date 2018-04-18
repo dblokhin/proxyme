@@ -11,6 +11,7 @@ import (
 	"os"
 	_ "net/http/pprof"
 	"net/http"
+	"runtime"
 )
 
 func init() {
@@ -25,6 +26,7 @@ func init() {
 // Staring main program here.
 // proxyme is so easy!
 func main() {
+	runtime.GOMAXPROCS(8)
 	log.Println("Starting golang proxyme")
 	go http.ListenAndServe("0.0.0.0:8081", nil)
 
