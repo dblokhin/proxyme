@@ -1,5 +1,5 @@
 # proxyme
-Simple, light & secure **Linux SOCKS5 Proxy Server** without logging.
+Simple, light & secure **SOCKS5 Proxy Server** without logging.
 
 Project status: unstable.
 
@@ -17,5 +17,5 @@ System requirements: Linux 3.5 and above.
 $ git clone https://github.com/dblokhin/proxyme
 $ cd proxyme
 $ export GOPATH=`pwd`
-$ go build cmd
+$ go build src/cmd/proxyme.go
 ```
