@@ -57,18 +57,21 @@ func Splice(dst net.Conn, src net.Conn) (int64, error) {
 		wg                 sync.WaitGroup
 	)
 
+	srcFD := int(srcFile.Fd())
+	dstFD := int(dstFile.Fd())
+
 	for {
 		wg.Add(2)
 		go func() {
 			// splice from socket to pipe
-			written1, err1 = syscall.Splice(int(srcFile.Fd()), nil, pipe2[1], nil, spliceBufferSize, SPLICE_F_MOVE)
+			written1, err1 = syscall.Splice(srcFD, nil, pipe2[1], nil, 1 << 62, SPLICE_F_MOVE)
 
 			wg.Done()
 		}()
 
 		go func() {
 			// splice from pipe to socket
-			written2, err2 = syscall.Splice(pipe2[0], nil, int(dstFile.Fd()), nil, spliceBufferSize, SPLICE_F_MOVE)
+			written2, err2 = syscall.Splice(pipe2[0], nil, dstFD, nil, 1 << 62, SPLICE_F_MOVE)
 
 			wg.Done()
 		}()
