@@ -9,9 +9,7 @@ import (
 	"encoding/binary"
 	"log"
 	"errors"
-	"io"
 	"sync"
-	"strings"
 )
 
 const (
@@ -51,6 +49,7 @@ func NewClient(conn net.Conn, idents []Identifier) {
 	cli := Client{
 		Conn: conn,
 	}
+	defer conn.Close()
 
 	// read the sock version first
 	if err := binary.Read(cli.Conn, binary.BigEndian, &cli.SocketVersion); err != nil {
@@ -60,21 +59,18 @@ func NewClient(conn net.Conn, idents []Identifier) {
 
 	// proxyme is only SOCKS5 server
 	if cli.SocketVersion != SOCK5Version {
-		conn.Close()
 		return
 	}
 
 	// get identity method first
 	if err := sock5IdentityMethod(&cli, idents); err != nil {
 		log.Println(err)
-		conn.Close()
 		return
 	}
 
 	// identity client
 	if err := cli.IdentMethod.Identify(cli.Conn); err != nil {
 		log.Println(err)
-		conn.Close()
 		return
 	}
 
@@ -82,7 +78,6 @@ func NewClient(conn net.Conn, idents []Identifier) {
 	var req RequestSOCK5
 	if err := req.Read(cli.Conn); err != nil {
 		log.Println(err)
-		conn.Close()
 		return
 	}
 
@@ -105,58 +100,44 @@ func NewClient(conn net.Conn, idents []Identifier) {
 
 			return
 		}
+		defer conn.Close()
 
 		// fill bnd addr
 		reply.Addr = conn.LocalAddr().(*net.TCPAddr)
 		reply.Send(cli.Conn)
-		cli.RemoteConn = conn
 
-		var wg sync.WaitGroup
-		wg.Add(2)
-		// connect two streams: cli.Conn & conn
-		// from client streaming
-		go func() {
-			buff := clientBuff.Get()
-			ioCopyBuff(cli.RemoteConn, cli.Conn, buff)
-			clientBuff.Put(buff)
-
-			wg.Done()
-		}()
-
-		// from remote streaming
-		go func() {
-			buff := hostBuff.Get()
-			ioCopyBuff(cli.Conn, cli.RemoteConn, buff)
-			hostBuff.Put(buff)
-
-			wg.Done()
-		}()
-
-		wg.Wait()
+		// Start proxy streams with efficient splice kernel method
+		spliceStreams(cli.Conn, conn)
 
 	default:
 		reply.REP = SOCK5StatusNotSupported
 		reply.Send(cli.Conn)
-		conn.Close()
 		return
 	}
 }
 
-func ioCopyBuff(dst net.Conn, src net.Conn, buff []byte) {
+// spliceStreams efficient kernel method to transfer data without context switching
+// and additional buffering
+func spliceStreams(dst net.Conn, src net.Conn) {
 
-	stream := io.TeeReader(src, dst)
-	for {
-		if _, err := stream.Read(buff); err != nil {
-			if err != io.EOF &&
-				!strings.Contains(err.Error(), "use of closed network connection") &&
-				!strings.Contains(err.Error(), "connection reset by peer")	{
-				log.Println(err)
-			}
+	var wg sync.WaitGroup
+	wg.Add(2)
 
-			break
+	go func() {
+		if _, err := Splice(dst, src); err != nil {
+			log.Println(err)
 		}
-	}
 
-	dst.Close()
-	src.Close()
+		wg.Done()
+	}()
+
+	go func() {
+		if _, err := Splice(src, dst); err != nil {
+			log.Println(err)
+		}
+
+		wg.Done()
+	}()
+
+	wg.Wait()
 }
