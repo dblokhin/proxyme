@@ -8,7 +8,6 @@ package socks
 
 import (
 	"syscall"
-	"net"
 	"sync"
 )
 
@@ -23,55 +22,39 @@ const (
 
 // Splice kernel mode zero-copying method to transfer data
 // http://man7.org/linux/man-pages/man2/splice.2.html
-func Splice(dst net.Conn, src net.Conn) (int64, error) {
+func Splice(dstFD, srcFD int) error {
 	var (
 		err   error
 		pipe2 [2]int
 	)
 
-	// creates a pipe
+	// create a pipe
 	if err = syscall.Pipe2(pipe2[:], syscall.O_CLOEXEC); err != nil {
-		return 0, err
+		return err
 	}
 	defer func() {
 		syscall.Close(pipe2[0])
 		syscall.Close(pipe2[1])
 	}()
 
-	// getting FD handles
-	dstFile, err := dst.(*net.TCPConn).File()
-	if err != nil {
-		return 0, err
-	}
-	defer dstFile.Close()
-
-	srcFile, err := src.(*net.TCPConn).File()
-	if err != nil {
-		return 0, err
-	}
-	defer srcFile.Close()
-
 	var (
-		written1, written2 int64
 		err1, err2         error
 		wg                 sync.WaitGroup
 	)
 
-	srcFD := int(srcFile.Fd())
-	dstFD := int(dstFile.Fd())
-
 	for {
 		wg.Add(2)
+
 		go func() {
 			// splice from socket to pipe
-			written1, err1 = syscall.Splice(srcFD, nil, pipe2[1], nil, 1 << 62, SPLICE_F_MOVE)
+			_, err1 = syscall.Splice(srcFD, nil, pipe2[1], nil, 1 << 62, SPLICE_F_MOVE)
 
 			wg.Done()
 		}()
 
 		go func() {
 			// splice from pipe to socket
-			written2, err2 = syscall.Splice(pipe2[0], nil, dstFD, nil, 1 << 62, SPLICE_F_MOVE)
+			_, err2 = syscall.Splice(pipe2[0], nil, dstFD, nil, 1 << 62, SPLICE_F_MOVE)
 
 			wg.Done()
 		}()
@@ -79,13 +62,14 @@ func Splice(dst net.Conn, src net.Conn) (int64, error) {
 		wg.Wait()
 
 		if err1 != nil {
-			return 0, err1
+			return err1
 		}
 
 		if err2 != nil {
-			return 0, err2
+			return err2
 		}
 	}
 
-	return written1, nil
+	// never reach
+	return nil
 }

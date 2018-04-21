@@ -118,26 +118,44 @@ func NewClient(conn net.Conn, idents []Identifier) {
 
 // spliceStreams efficient kernel method to transfer data without context switching
 // and additional buffering
-func spliceStreams(dst net.Conn, src net.Conn) {
+func spliceStreams(dst net.Conn, src net.Conn) error {
 
-	var wg sync.WaitGroup
+	// getting FD handles
+	dstFile, err := dst.(*net.TCPConn).File()
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
+
+	srcFile, err := src.(*net.TCPConn).File()
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+
+	srcFD := int(srcFile.Fd())
+	dstFD := int(dstFile.Fd())
+
+	var (
+		err1, err2         error
+		wg sync.WaitGroup
+	)
+
 	wg.Add(2)
-
 	go func() {
-		if _, err := Splice(dst, src); err != nil {
-			log.Println(err)
-		}
-
+		err1 = Splice(dstFD, srcFD)
 		wg.Done()
 	}()
-
 	go func() {
-		if _, err := Splice(src, dst); err != nil {
-			log.Println(err)
-		}
-
+		err2 = Splice(srcFD, dstFD)
 		wg.Done()
 	}()
 
 	wg.Wait()
+
+	if err1 != nil {
+		return err1
+	}
+
+	return err2
 }
