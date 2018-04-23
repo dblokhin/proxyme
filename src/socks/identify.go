@@ -24,6 +24,6 @@ type Identifier interface {
 	// ID is identical method id
 	ID() uint8
 
-	// Identify client, returns nonerror if identity successful
+	// Identify client, returns nonerror if identifier successful
 	Identify(conn net.Conn) error
 }

@@ -1,7 +1,7 @@
-# proxyme
+# Proxyme
 Simple, light & secure **SOCKS5 Proxy Server** without logging.
 
-### Project status: unstable.
+### Project status: open development
 
 ### System requirements:
 - Linux >= 3.5

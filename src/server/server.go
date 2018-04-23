@@ -7,11 +7,12 @@ package server
 import (
 	"net"
 	"socks"
+	"log"
 )
 
 type ProxymeServer struct {
 	ListenAddr string
-	Idents []socks.Identifier
+	Idents     []socks.Identifier
 }
 
 func (s *ProxymeServer) Start() error {
@@ -27,7 +28,18 @@ func (s *ProxymeServer) Start() error {
 			return err
 		}
 
-		// processes new client
-		go socks.NewClient(conn, s.Idents)
+		// processes new client in goroutine
+		go func(clientConn net.Conn) {
+			client, err := socks.New(clientConn, s.Idents)
+			if err != nil {
+				log.Println(err)
+				return
+			}
+
+			// run CMD
+			if err := client.RunCMD(); err != nil {
+				log.Println(err)
+			}
+		}(conn)
 	}
 }
