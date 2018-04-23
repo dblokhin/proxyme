@@ -9,7 +9,6 @@ import (
 	"encoding/binary"
 	"log"
 	"errors"
-	"sync"
 )
 
 const (
@@ -114,48 +113,4 @@ func NewClient(conn net.Conn, idents []Identifier) {
 		reply.Send(cli.Conn)
 		return
 	}
-}
-
-// spliceStreams efficient kernel method to transfer data without context switching
-// and additional buffering
-func spliceStreams(dst net.Conn, src net.Conn) error {
-
-	// getting FD handles
-	dstFile, err := dst.(*net.TCPConn).File()
-	if err != nil {
-		return err
-	}
-	defer dstFile.Close()
-
-	srcFile, err := src.(*net.TCPConn).File()
-	if err != nil {
-		return err
-	}
-	defer srcFile.Close()
-
-	srcFD := int(srcFile.Fd())
-	dstFD := int(dstFile.Fd())
-
-	var (
-		err1, err2         error
-		wg sync.WaitGroup
-	)
-
-	wg.Add(2)
-	go func() {
-		err1 = Splice(dstFD, srcFD)
-		wg.Done()
-	}()
-	go func() {
-		err2 = Splice(srcFD, dstFD)
-		wg.Done()
-	}()
-
-	wg.Wait()
-
-	if err1 != nil {
-		return err1
-	}
-
-	return err2
 }

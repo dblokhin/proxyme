@@ -8,7 +8,7 @@ package socks
 
 import (
 	"syscall"
-	"sync"
+	"net"
 )
 
 const (
@@ -37,39 +37,53 @@ func Splice(dstFD, srcFD int) error {
 		syscall.Close(pipe2[1])
 	}()
 
-	var (
-		err1, err2         error
-		wg                 sync.WaitGroup
-	)
-
 	for {
-		wg.Add(2)
-
-		go func() {
-			// splice from socket to pipe
-			_, err1 = syscall.Splice(srcFD, nil, pipe2[1], nil, 1 << 62, SPLICE_F_MOVE)
-
-			wg.Done()
-		}()
-
-		go func() {
-			// splice from pipe to socket
-			_, err2 = syscall.Splice(pipe2[0], nil, dstFD, nil, 1 << 62, SPLICE_F_MOVE)
-
-			wg.Done()
-		}()
-
-		wg.Wait()
-
-		if err1 != nil {
-			return err1
+		// splice from socket to pipe
+		if _, err = syscall.Splice(srcFD, nil, pipe2[1], nil, 1<<62, SPLICE_F_MOVE); err != nil {
+			return err
 		}
 
-		if err2 != nil {
-			return err2
+		// splice from pipe to socket
+		if _, err = syscall.Splice(pipe2[0], nil, dstFD, nil, 1<<62, SPLICE_F_MOVE); err != nil {
+			return err
 		}
 	}
 
 	// never reach
 	return nil
+}
+
+// spliceStreams efficient kernel method to transfer data without context switching
+// and additional buffering
+func spliceStreams(a, b net.Conn) error {
+
+	// getting FD handles
+	aFile, err := a.(*net.TCPConn).File()
+	if err != nil {
+		return err
+	}
+	defer aFile.Close()
+
+	bFile, err := b.(*net.TCPConn).File()
+	if err != nil {
+		return err
+	}
+	defer bFile.Close()
+
+	aFD := int(bFile.Fd())
+	bFD := int(aFile.Fd())
+
+	quit := make(chan error)
+
+	go func() {
+		quit <- Splice(bFD, aFD)
+	}()
+	go func() {
+		quit <- Splice(aFD, bFD)
+	}()
+
+	err = <-quit
+	go func() { <-quit }() // avoid leaks another goroutine (or use context cancel for this purpose)
+
+	return err
 }
