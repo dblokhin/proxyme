@@ -24,24 +24,24 @@ type LoginValidator interface {
 
 const (
 	loginStatusSuccess uint8 = 0
-	loginStatusDenied uint8 = 0xff
+	loginStatusDenied  uint8 = 0xff
 
-	// as described http://www.ietf.org/rfc/rfc1929.txt
-	loginSubnegotiationVersion	uint8 = 1
+	// as defined http://www.ietf.org/rfc/rfc1929.txt
+	loginSubnegotiationVersion uint8 = 1
 )
 
 var errLoginVersion = errors.New("error login version")
 
 // ID is identical method id
 func (a Login) ID() uint8 {
-	return SOCK5Login
+	return IdentLogin
 }
 
 // Identify authorization proc
 func (a Login) Identify(conn net.Conn) error {
 	var (
 		request loginRequest
-		reply loginReply
+		reply   loginReply
 	)
 
 	if err := request.Read(conn); err != nil {
@@ -68,9 +68,9 @@ func (a Login) auth(login, pass string) bool {
 
 // loginRequest client request with username/passwd
 type loginRequest struct {
-	Ver uint8 // MUST BE 1
-	Login string
-	Passwd	string
+	Ver    uint8 // MUST BE 1
+	Login  string
+	Passwd string
 }
 
 // Read the client request
@@ -113,7 +113,6 @@ func (req *loginRequest) Read(r io.Reader) error {
 
 	return nil
 }
-
 
 type loginReply struct {
 	Status uint8

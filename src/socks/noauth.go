@@ -7,11 +7,11 @@ package socks
 import "net"
 
 // NoAuth ident method without auth
-type NoAuth struct {}
+type NoAuth struct{}
 
 // ID is identical method id
 func (a NoAuth) ID() uint8 {
-	return SOCK5NoAuth
+	return IdentNoAuth
 }
 
 // Identify authorization proc

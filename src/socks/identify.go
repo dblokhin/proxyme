@@ -10,11 +10,11 @@ import (
 )
 
 const (
-	// identical method ids
-	SOCK5NoAuth     uint8 = 0
-	SOCK5GSSAPI     uint8 = 1
-	SOCK5Login      uint8 = 2
-	SOCK5IdentError uint8 = 0xff
+	// identical methods
+	IdentNoAuth uint8 = 0
+	IdentGSSAPI uint8 = 1
+	IdentLogin  uint8 = 2
+	IdentError  uint8 = 0xff
 )
 
 var errAccessDenied = errors.New("access denied")

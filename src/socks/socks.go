@@ -2,22 +2,129 @@
 // Author Dmitriy Blokhin. All rights reserved.
 // License can be found in the LICENSE file.
 
+// package socks implements SOCKS5 protocol based on RFC: http://www.ietf.org/rfc/rfc1928.txt
 package socks
 
 import (
-	"io"
-	"encoding/binary"
-	"errors"
 	"net"
+	"encoding/binary"
+	"log"
+	"errors"
+	"io"
 )
 
-// SOCK5 RFC: http://www.ietf.org/rfc/rfc1928.txt
-
 const (
+	// Protocol versions. Supported only SOCKS5
+	SOCK4Version uint8 = 4
+	SOCK5Version uint8 = 5
+
+	// Clients CMD
+	CMDConnect  uint8 = 1
+	CMDBind     uint8 = 2
+	CMDUDPAssoc uint8 = 3
+
+	// Reply status based on RFC
+	StatusSucceeded           uint8 = 0
+	StatusSockFailure         uint8 = 1 // general SOCKS server failure
+	StatusNowAllowed          uint8 = 2 // connection not allowed by ruleset
+	StatusNetworkUnreachable  uint8 = 3 // Network unreachable
+	StatusHostUnreachable     uint8 = 4 // Host unreachable
+	StatusRefused             uint8 = 5 // Connection refused
+	StatusTTLExpired          uint8 = 6 // TTL expired
+	StatusNotSupported        uint8 = 7 // Command not supported
+	StatusAddressNotSupported uint8 = 8 // Address type not supported
+
+	// address types based on RFC
 	ATYPIpv4       uint8 = 1
 	ATYPDomainName uint8 = 3
 	ATYPIpv6       uint8 = 4
 )
+
+var (
+	errSOCKVersion = errors.New("error sock version")
+	errUnsupportedATYP = errors.New("unsupported ATYP")
+	errResolvingDomain = errors.New("resolving domain error")
+)
+
+// Client structure represents each connected client
+type Client struct {
+	Conn          net.Conn
+	RemoteConn    net.Conn
+	SocketVersion uint8
+	IdentMethod   Identifier
+}
+
+// NewClient processes new incoming connection
+func NewClient(conn net.Conn, idents []Identifier) {
+	cli := Client{
+		Conn: conn,
+	}
+	defer conn.Close()
+
+	// read the sock version first
+	if err := binary.Read(cli.Conn, binary.BigEndian, &cli.SocketVersion); err != nil {
+		log.Println(err)
+		return
+	}
+
+	// proxyme is only SOCKS5 server
+	if cli.SocketVersion != SOCK5Version {
+		return
+	}
+
+	// get identity method first
+	if err := sock5IdentityMethod(&cli, idents); err != nil {
+		log.Println(err)
+		return
+	}
+
+	// identity client
+	if err := cli.IdentMethod.Identify(cli.Conn); err != nil {
+		log.Println(err)
+		return
+	}
+
+	// getting request (CONNECT, BIND, UDP assoc)
+	var req RequestSOCK5
+	if err := req.Read(cli.Conn); err != nil {
+		log.Println(err)
+		return
+	}
+
+	var reply ReplySOCK5
+
+	// processing client request
+	switch req.CMD {
+	case CMDConnect:
+		// connect to remote
+		conn, err := net.Dial("tcp", req.Addr.String())
+		if err != nil {
+			reply.REP = StatusSockFailure
+			reply.Addr = cli.Conn.LocalAddr().(*net.TCPAddr)
+
+			if nerr, ok := err.(net.Error); ok {
+				if nerr.Timeout() {
+					reply.REP = StatusHostUnreachable
+				}
+			}
+
+			return
+		}
+		defer conn.Close()
+
+		// fill bnd addr
+		reply.Addr = conn.LocalAddr().(*net.TCPAddr)
+		reply.Send(cli.Conn)
+
+		// Start proxy streams with efficient splice kernel method
+		spliceStreams(cli.Conn, conn)
+
+	default:
+		reply.REP = StatusNotSupported
+		reply.Send(cli.Conn)
+		return
+	}
+}
 
 // sock5IdentityMethod gets client ident methods & select one
 func sock5IdentityMethod(client *Client, approved []Identifier) error {
@@ -45,7 +152,7 @@ check:
 	var resp identResp
 	if !determined {
 		// send error no ident to client
-		resp.ID = SOCK5IdentError
+		resp.ID = IdentError
 		return errors.New("no selected ident method")
 	}
 
