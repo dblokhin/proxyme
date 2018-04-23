@@ -58,15 +58,16 @@ func main() {
 }
 
 // HardcodeValidator is just simple example validator of username/pass identity.
-// Validator should impl LoginValidator interface (see login.go)
+// You can create own validator (authentificator) with database, config data, OS users and others
+// Validator implements LoginValidator interface (see src/socks/login.go)
 type HardcodeValidator struct {}
 
 // PasswordByLogin the main goal of validator: returns pwd of given login
-func (hc HardcodeValidator) PasswordByLogin(login string) string {
-	if login == "guest" {
-		return "guest"
+func (hc HardcodeValidator) Authorize(login, pass string) bool {
+	// zero-length login or pass is invalid
+	if len(login) == 0 || len(pass) == 0 {
+		return false
 	}
 
-	// the zero-lenght pass is invalid pass (see login.go)
-	return ""
+	return login == "guest" && pass == "guest"
 }

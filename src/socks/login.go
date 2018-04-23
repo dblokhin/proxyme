@@ -19,7 +19,7 @@ type Login struct {
 }
 
 type LoginValidator interface {
-	PasswordByLogin(login string) string
+	Authorize(login, pass string) bool
 }
 
 const (
@@ -44,21 +44,27 @@ func (a Login) Identify(conn net.Conn) error {
 		reply   loginReply
 	)
 
+	// read client request with login/pass
 	if err := request.Read(conn); err != nil {
 		return err
 	}
 
-	if len(request.Passwd) != 0 && a.Validator.PasswordByLogin(request.Login) == request.Passwd {
+	// validate login & pass
+	if a.Validator.Authorize(request.Login, request.Passwd) {
 		// Granted
 		reply.Status = loginStatusSuccess
-		reply.Send(conn)
+		return reply.Send(conn)
 	} else {
 		// Denied
 		reply.Status = loginStatusDenied
-		reply.Send(conn)
+		if err := reply.Send(conn); err != nil {
+			return err
+		}
+
 		return errAccessDenied
 	}
 
+	// never rich
 	return nil
 }
 
