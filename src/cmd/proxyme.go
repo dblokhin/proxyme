@@ -6,7 +6,6 @@ package main
 
 import (
 	"log"
-	"server"
 	"socks"
 	"os"
 	_ "net/http/pprof"
@@ -46,19 +45,16 @@ func main() {
 	idents = append(idents, socks.NoAuth{})
 
 	// init server structure
-	proxyme := server.ProxymeServer{
-		ListenAddr: listenAddr,
-		Idents:     idents,
-	}
+	proxyme := socks.NewServer(listenAddr, idents)
 
-	// run proxy
+	// start proxy
 	if err := proxyme.Start(); err != nil {
-		log.Fatal(err)
+		log.Println(err)
 	}
 }
 
 // HardcodeValidator is just simple example validator of username/pass identity.
-// You can create own validator (authentificator) with database, config data, OS users and others
+// You can create own validator (authenticator) with database, config data, OS users and others
 // Validator implements LoginValidator interface (see src/socks/login.go)
 type HardcodeValidator struct {}
 

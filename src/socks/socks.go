@@ -57,8 +57,8 @@ type Client struct {
 	identifier      Identifier
 }
 
-// New creates new socks5 identified client for creating proxy window
-func New(conn net.Conn, serverIdents []Identifier) (*Client, error) {
+// NewClient creates new socks5 identified client for creating proxy window
+func NewClient(conn net.Conn, serverIdents []Identifier) (*Client, error) {
 	client := &Client{
 		Conn: conn,
 	}
@@ -219,6 +219,11 @@ func (cli *Client) RunCMD() error {
 	}
 
 	// never rich
+	return nil
+}
+
+// Close destroys client, connections and other active resources
+func (cli *Client) Close() error {
 	return nil
 }
 
