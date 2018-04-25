@@ -202,6 +202,7 @@ func (cli *Client) RunCMD() error {
 			return err
 		}
 		defer RemoteConn.Close()
+		cli.RemoteConn = RemoteConn
 
 		// fill bnd addr
 		reply.Addr = RemoteConn.LocalAddr().(*net.TCPAddr)
@@ -223,8 +224,11 @@ func (cli *Client) RunCMD() error {
 }
 
 // Close destroys client, connections and other active resources
-func (cli *Client) Close() error {
-	return nil
+func (cli *Client) Close() {
+	cli.Conn.Close()
+	if cli.RemoteConn != nil {
+		cli.RemoteConn.Close()
+	}
 }
 
 // identResp response structure on requesting identity method

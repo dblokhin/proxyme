@@ -13,14 +13,15 @@ import (
 )
 
 // NewServer returns new socks5 server
-func NewServer(listen string, idents []Identifier) *ProxymeServer {
-	return &ProxymeServer {
+func NewServer(listen string, idents []Identifier) *Server {
+	return &Server{
 		listenAddr: listen,
 		idents: idents,
 	}
 }
 
-type ProxymeServer struct {
+// Server is socks5 server structure
+type Server struct {
 	listenAddr string
 	idents     []Identifier
 
@@ -45,7 +46,7 @@ const (
 )
 
 // Start runs server instance
-func (s *ProxymeServer) Start() error {
+func (s *Server) Start() error {
 	var err error
 
 	// check if running
@@ -77,7 +78,7 @@ func (s *ProxymeServer) Start() error {
 }
 
 // Stop stops the listening server & close all clients
-func (s *ProxymeServer) Stop() error {
+func (s *Server) Stop() error {
 	s.Lock()
 	// check if running
 	if !atomic.CompareAndSwapInt32(&s.state, srvStateRun, srvStateStop) {
@@ -86,19 +87,23 @@ func (s *ProxymeServer) Stop() error {
 
 	s.listener.Close()
 
-	for _, client := range s.clients {
-		client.Close()
-	}
+	// save client list
+	oldsClients := s.clients
 
 	// destroy client list
 	s.clients = make([]*Client, 0)
 	s.state = srvStateInit
 	s.Unlock()
 
+	// close clients
+	for _, client := range oldsClients {
+		client.Close()
+	}
+
 	return nil
 }
 
-func (s *ProxymeServer) processClient(conn net.Conn) error {
+func (s *Server) processClient(conn net.Conn) error {
 	client, err := NewClient(conn, s.idents)
 	if err != nil {
 		return err

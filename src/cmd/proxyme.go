@@ -11,6 +11,7 @@ import (
 	_ "net/http/pprof"
 	"net/http"
 	"runtime"
+	"validators"
 )
 
 func init() {
@@ -27,6 +28,8 @@ func init() {
 func main() {
 	runtime.GOMAXPROCS(8)
 	log.Println("Starting golang proxyme")
+
+	// it's just http profiler
 	go http.ListenAndServe("0.0.0.0:8081", nil)
 
 	// setting up listen addr
@@ -38,10 +41,10 @@ func main() {
 
 	// adding username/pass identity
 	idents = append(idents, socks.Login{
-		HardcodeValidator{},
+		Validator: validators.HardcodeValidator{},
 	})
 
-	// adding without auth identity
+	// adding noauth identity
 	idents = append(idents, socks.NoAuth{})
 
 	// init server structure
@@ -51,19 +54,4 @@ func main() {
 	if err := proxyme.Start(); err != nil {
 		log.Println(err)
 	}
-}
-
-// HardcodeValidator is just simple example validator of username/pass identity.
-// You can create own validator (authenticator) with database, config data, OS users and others
-// Validator implements LoginValidator interface (see src/socks/login.go)
-type HardcodeValidator struct {}
-
-// PasswordByLogin the main goal of validator: returns pwd of given login
-func (hc HardcodeValidator) Authorize(login, pass string) bool {
-	// zero-length login or pass is invalid
-	if len(login) == 0 || len(pass) == 0 {
-		return false
-	}
-
-	return login == "guest" && pass == "guest"
 }
