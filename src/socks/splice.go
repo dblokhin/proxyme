@@ -1,5 +1,5 @@
 // 18.04.18 proxyme
-// Author Dmitriy Blokhin. All rights reserved.
+// Proxyme Developers. All rights reserved.
 // License can be found in the LICENSE file.
 
 // +build amd64,linux

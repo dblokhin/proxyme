@@ -1,5 +1,5 @@
 // 13.04.18 proxyme
-// Author Dmitriy Blokhin. All rights reserved.
+// Proxyme Developers. All rights reserved.
 // License can be found in the LICENSE file.
 
 // package socks implements SOCKS5 protocol based on RFC: http://www.ietf.org/rfc/rfc1928.txt
