@@ -66,11 +66,19 @@ func (s *Server) Start() error {
 		}
 
 		// processes new client in goroutine
-		go func() {
-			if err := s.processClient(conn); err != nil {
+		go func(c net.Conn) {
+			// recover on each connection
+			defer func() {
+				if err := recover(); err != nil {
+					log.Println(err)
+					c.Close()
+				}
+			}()
+
+			if err := s.processClient(c); err != nil {
 				log.Println(err)
 			}
-		}()
+		}(conn)
 	}
 
 	// never rich
