@@ -10,6 +10,7 @@ Simple, light & secure **SOCKS5 Proxy Server** on golang without logging.
 ## Features
 - Vary small, easy Golang codebase;
 - Supports NoAuth & username/password identities;
+- Simple SQL validator for username/password identity;
 - Wihtout double buffering;
 - Efficient Linux `splice()` method that reduces the cost of context switch and the memory usage, zero-copy forwarding is possible using the `splice()` system call under Linux;
 
