@@ -1,0 +1,4 @@
+{
+  "listen": "localhost:8080",
+  "idents": ["noauth", "login"]
+}

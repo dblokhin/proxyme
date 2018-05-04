@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"runtime"
 	"validators"
+	"github.com/dblokhin/config"
 )
 
 func init() {
@@ -32,9 +33,14 @@ func main() {
 	// it's just http profiler
 	go http.ListenAndServe("0.0.0.0:8081", nil)
 
+	// load config
+	conf, err := config.New("config.json")
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	// setting up listen addr
-	// TODO: from env. vars
-	listenAddr := "localhost:8080"
+	listenAddr := conf.GetString("listen")
 
 	// init ident methods (see sock5, http://www.ietf.org/rfc/rfc1928.txt)
 	idents := make([]socks.Identifier, 0)
