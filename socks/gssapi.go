@@ -5,10 +5,10 @@
 package socks
 
 import (
-	"net"
-	"io"
 	"encoding/binary"
 	"errors"
+	"io"
+	"net"
 )
 
 // GSSAPI ident method with GSSAPI
@@ -40,9 +40,9 @@ const (
 	gssapiSubnegotiationVersion uint8 = 1
 
 	// types of GSSAPI messages (mtyp)
-	gssapiMessageInit          uint8 = 1
-	gssapiMessageSubnegotiation  uint8 = 2
-	gssapiMessageEncapsulation uint8 = 3
+	gssapiMessageInit           uint8 = 1
+	gssapiMessageSubnegotiation uint8 = 2
+	gssapiMessageEncapsulation  uint8 = 3
 
 	gssapiMessageError uint8 = 0xff
 )
