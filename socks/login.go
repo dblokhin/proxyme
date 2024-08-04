@@ -5,10 +5,10 @@
 package socks
 
 import (
-	"net"
-	"io"
 	"encoding/binary"
 	"errors"
+	"io"
+	"net"
 )
 
 // defined in rfc1929.txt

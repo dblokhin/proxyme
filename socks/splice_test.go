@@ -5,9 +5,9 @@
 package socks
 
 import (
-	"testing"
-	"net"
 	"bytes"
+	"net"
+	"testing"
 )
 
 func createTransferWindow(l net.Listener) error {
@@ -73,9 +73,8 @@ func testSpliceStream(t *testing.T, chunkSize int) {
 	defer c1.Close()
 	defer c2.Close()
 
-
 	data := make([]byte, chunkSize)
-	data[chunkSize - 1] = byte(chunkSize)
+	data[chunkSize-1] = byte(chunkSize)
 	//write
 	if _, err := c1.Write(data); err != nil {
 		t.Fatal("write error:", err)

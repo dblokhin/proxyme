@@ -6,15 +6,15 @@
 package socks
 
 import (
-	"net"
 	"encoding/binary"
 	"errors"
 	"io"
+	"net"
 )
 
 const (
 	// Protocol versions. Supported only SOCKS5
-	SOCKS4Version  uint8 = 4
+	SOCKS4Version uint8 = 4
 	SOCKS5Version uint8 = 5
 
 	// Clients CMD
@@ -41,7 +41,7 @@ const (
 
 var (
 	errSOCKSVersion    = errors.New("invalid socks version")
-	errNoIdentity = errors.New("unsupported client idents")
+	errNoIdentity      = errors.New("unsupported client idents")
 	errUnsupportedATYP = errors.New("unsupported ATYP")
 	errResolvingDomain = errors.New("resolving domain error")
 )

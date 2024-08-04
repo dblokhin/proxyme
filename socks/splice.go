@@ -2,13 +2,14 @@
 // Proxyme Developers. All rights reserved.
 // License can be found in the LICENSE file.
 
+//go:build amd64 && linux
 // +build amd64,linux
 
 package socks
 
 import (
-	"syscall"
 	"net"
+	"syscall"
 )
 
 const (

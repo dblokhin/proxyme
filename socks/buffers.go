@@ -23,7 +23,7 @@ type reBuffer struct {
 	queue chan []byte
 
 	// size counter of allocates
-	size    int
+	size int
 	// maxSize maximum of new allocates
 	maxSize int
 
@@ -65,14 +65,14 @@ func (rb *reBuffer) Put(b []byte) {
 func init() {
 	clientBuff = reBuffer{
 		queue:    make(chan []byte, 100),
-		size: 0,
+		size:     0,
 		maxSize:  100,
 		buffSize: clientBufferSize,
 	}
 
 	hostBuff = reBuffer{
 		queue:    make(chan []byte, 100),
-		size: 0,
+		size:     0,
 		maxSize:  100,
 		buffSize: hostBufferSize,
 	}

@@ -5,18 +5,18 @@
 package socks
 
 import (
-	"net"
+	"errors"
 	"log"
+	"net"
 	"sync"
 	"sync/atomic"
-	"errors"
 )
 
 // NewServer returns new socks5 server
 func NewServer(listen string, idents []Identifier) *Server {
 	return &Server{
 		listenAddr: listen,
-		idents: idents,
+		idents:     idents,
 	}
 }
 
