@@ -1,32 +1,32 @@
 package proxyme
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"log"
 	"net"
 	"net/netip"
+	"proxyme/protocol"
 	"sync"
 	"time"
 )
 
 type Server struct {
-	protocol sock5
+	protocol protocol.Sock5
 	done     chan any
 	once     *sync.Once
 }
 
 // NewServer returns new socks5 server
-func NewServer(bindIP string) (Server, error) {
-	addr, err := netip.ParseAddr(bindIP)
+func NewServer(externalIP string) (Server, error) {
+	addr, err := netip.ParseAddr(externalIP)
 	if err != nil {
 		return Server{}, err
 	}
 
 	return Server{
-		protocol: sock5{
-			bindIP: addr.AsSlice(),
+		protocol: protocol.Sock5{
+			ExternalIP: addr.AsSlice(),
 		},
 		done: make(chan any),
 		once: new(sync.Once),
@@ -63,25 +63,17 @@ func (s Server) Run(addr string) error {
 }
 
 func (s Server) handle(conn net.Conn) {
-	const (
-		readBuffer  = 32 * 1024
-		writeBuffer = 4 * 1024
-	)
-	rdr := bufio.NewReaderSize(conn, readBuffer)
-	wrt := bufio.NewWriterSize(conn, writeBuffer)
-	p := &peer{
-		conn: conn,
-		rdr:  rdr,
-		wrt:  wrt,
-	}
 	defer conn.Close()
 
-	state := s.protocol.initialState(p)
+	p := protocol.NewPeer(conn)
+	state := s.protocol.InitState(p)
 	for state != nil {
 		state = state(p)
 	}
 
-	log.Println(p.err)
+	if err := p.LastError(); err != nil {
+		log.Println(err)
+	}
 }
 
 func (s Server) Close() {
