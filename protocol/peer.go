@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"bufio"
+	"io"
 	"net"
 )
 
@@ -15,6 +16,18 @@ type Peer struct {
 
 func (p Peer) LastError() error {
 	return p.err
+}
+
+func (p Peer) WriteMessage(msg io.WriterTo) error {
+	if _, err := msg.WriteTo(p.wrt); err != nil {
+		return err
+	}
+
+	if err := p.wrt.Flush(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func NewPeer(conn net.Conn) *Peer {
