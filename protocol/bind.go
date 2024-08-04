@@ -1,4 +1,4 @@
-package proxyme
+package protocol
 
 import (
 	"context"

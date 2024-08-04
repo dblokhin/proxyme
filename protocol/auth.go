@@ -1,4 +1,4 @@
-package messages
+package protocol
 
 import (
 	"encoding/binary"
@@ -31,6 +31,26 @@ func (a *Auth) ReadFrom(r io.Reader) (n int64, err error) {
 		}
 		n++
 	}
+
+	return
+}
+
+type AuthReply struct {
+	Method uint8
+}
+
+func (a AuthReply) WriteTo(w io.Writer) (n int64, err error) {
+	// write Sock5 version
+	if err = binary.Write(w, binary.BigEndian, protoVersion); err != nil {
+		return
+	}
+	n++
+
+	// write method ID
+	if err = binary.Write(w, binary.BigEndian, a.Method); err != nil {
+		return
+	}
+	n++
 
 	return
 }

@@ -1,19 +1,10 @@
-package messages
+package protocol
 
 import (
 	"encoding/binary"
 	"fmt"
 	"io"
 	"net"
-)
-
-const protoVersion uint8 = 5
-
-// address types based on RFC
-const (
-	atypIpv4       uint8 = 1
-	atypDomainName uint8 = 3
-	atypIpv6       uint8 = 4
 )
 
 type Command struct {
@@ -95,7 +86,7 @@ type CommandReply struct {
 }
 
 func (r CommandReply) WriteTo(w io.Writer) (n int64, err error) {
-	// write sock5 version
+	// write Sock5 version
 	if err = binary.Write(w, binary.BigEndian, protoVersion); err != nil {
 		return
 	}
