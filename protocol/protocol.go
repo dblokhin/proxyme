@@ -1,7 +1,6 @@
 package protocol
 
 import (
-	"encoding/binary"
 	"fmt"
 	"net"
 )
@@ -51,19 +50,9 @@ func (s Sock5) chooseAuthState(msg Auth) State {
 
 func (s Sock5) errAuthState(msg Auth) State {
 	return func(p *Peer) State {
-		// write Sock5 version
-		if err := binary.Write(p.wrt, binary.BigEndian, protoVersion); err != nil {
-			p.err = fmt.Errorf("sock write: %w", err)
-			return nil
-		}
+		reply := AuthReply{Method: identError}
 
-		// write method ID
-		if err := binary.Write(p.wrt, binary.BigEndian, identError); err != nil {
-			p.err = fmt.Errorf("sock write: %w", err)
-			return nil
-		}
-
-		if err := p.wrt.Flush(); err != nil {
+		if err := p.WriteMessage(reply); err != nil {
 			p.err = fmt.Errorf("sock write: %w", err)
 			return nil
 		}
@@ -78,12 +67,7 @@ func (s Sock5) authState(msg Auth) State {
 	return func(p *Peer) State {
 		reply := AuthReply{Method: identNoAuth}
 
-		if _, err := reply.WriteTo(p.wrt); err != nil {
-			p.err = fmt.Errorf("sock write: %w", err)
-			return nil
-		}
-
-		if err := p.wrt.Flush(); err != nil {
+		if err := p.WriteMessage(reply); err != nil {
 			p.err = fmt.Errorf("sock write: %w", err)
 			return nil
 		}
@@ -124,12 +108,7 @@ func (s Sock5) unsupportedCommand(msg Command) State {
 	}
 
 	return func(p *Peer) State {
-		if _, err := reply.WriteTo(p.wrt); err != nil {
-			p.err = fmt.Errorf("sock write: %w", err)
-			return nil
-		}
-
-		if err := p.wrt.Flush(); err != nil {
+		if err := p.WriteMessage(reply); err != nil {
 			p.err = fmt.Errorf("sock write: %w", err)
 			return nil
 		}
@@ -154,12 +133,7 @@ func (s Sock5) connectState(msg Command) State {
 			Port: msg.Port,
 		}
 
-		if _, err := reply.WriteTo(p.wrt); err != nil {
-			p.err = fmt.Errorf("sock write: %w", err)
-			return nil
-		}
-
-		if err := p.wrt.Flush(); err != nil {
+		if err := p.WriteMessage(reply); err != nil {
 			p.err = fmt.Errorf("sock write: %w", err)
 			return nil
 		}
@@ -180,12 +154,7 @@ func (s Sock5) connectErrorState(msg Command, status uint8) State {
 	}
 
 	return func(p *Peer) State {
-		if _, err := reply.WriteTo(p.wrt); err != nil {
-			p.err = fmt.Errorf("sock write: %w", err)
-			return nil
-		}
-
-		if err := p.wrt.Flush(); err != nil {
+		if err := p.WriteMessage(reply); err != nil {
 			p.err = fmt.Errorf("sock write: %w", err)
 			return nil
 		}
