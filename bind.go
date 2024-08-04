@@ -4,28 +4,15 @@ import (
 	"context"
 	"golang.org/x/sync/errgroup"
 	"io"
-	"log"
 	"net"
 )
 
-func bind(dst net.Conn, ls net.Listener) {
+func bind(dst net.Conn, src net.Conn) {
 	defer dst.Close()
-
-	src, err := ls.Accept()
-	if err != nil {
-		// todo: just log
-		return
-	}
-
-	log.Println("connected to bind port")
-
 	defer src.Close()
-	_ = ls.Close()
 
 	eg, _ := errgroup.WithContext(context.Background())
 	eg.Go(func() error {
-		log.Println(io.ReadAll(src))
-		return io.EOF
 		for {
 			if _, err := io.Copy(dst, src); err != nil {
 				return err

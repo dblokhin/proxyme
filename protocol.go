@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"log"
-	"math/rand"
 	"net"
 	"proxyme/messages"
 )
@@ -131,8 +130,6 @@ func (s sock5) newCommandState(p *peer) protocolState {
 		return nil
 	}
 
-	log.Println("got command", msg)
-
 	// validate fields
 	if err := validateProtocolVersion(msg.Version); err != nil {
 		p.err = err
@@ -167,8 +164,6 @@ func (s sock5) unsupportedCommand(msg messages.Command) protocolState {
 			return nil
 		}
 
-		log.Println("send cmd err reply", reply)
-
 		return s.newCommandState
 	}
 }
@@ -181,29 +176,14 @@ func (s sock5) connectState(msg messages.Command) protocolState {
 			return s.connectErrorState(msg, replyStatusHostUnreachable)
 		}
 
-		port := uint16(1200 + rand.Intn(1<<16-1-1200))
-		ls, err := net.Listen("tcp", fmt.Sprintf("%s:%d", s.bindIP.String(), port))
-		if err != nil {
-			p.err = fmt.Errorf("listen: %w", err)
-			return s.connectErrorState(msg, replyStatusSockFailure)
+		reply := messages.CommandReply{
+			Rep:  replyStatusSucceeded,
+			Rsv:  0,
+			Atyp: msg.Atyp,
+			Addr: msg.Addr,
+			Port: msg.Port,
 		}
 
-		go bind(conn, ls)
-
-		return s.connectSuccessState(s.bindIP, port)
-	}
-}
-
-func (s sock5) connectSuccessState(ip []byte, port uint16) protocolState {
-	reply := messages.CommandReply{
-		Rep:  replyStatusSucceeded,
-		Rsv:  0,
-		Atyp: 1, // todo: change it
-		Addr: ip,
-		Port: port,
-	}
-
-	return func(p *peer) protocolState {
 		if _, err := reply.WriteTo(p.wrt); err != nil {
 			p.err = fmt.Errorf("sock write: %w", err)
 			return nil
@@ -214,9 +194,9 @@ func (s sock5) connectSuccessState(ip []byte, port uint16) protocolState {
 			return nil
 		}
 
-		log.Println("send cmd reply", reply)
+		bind(conn, p.conn)
 
-		return s.newCommandState
+		return nil
 	}
 }
 
