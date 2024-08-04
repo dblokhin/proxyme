@@ -2,11 +2,13 @@ package proxyme
 
 import (
 	"bufio"
+	"net"
 )
 
 type peer struct {
-	rdr *bufio.Reader
-	wrt *bufio.Writer
+	conn net.Conn
+	rdr  *bufio.Reader
+	wrt  *bufio.Writer
 
 	err error // last error during connection
 }

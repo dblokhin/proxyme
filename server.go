@@ -70,8 +70,9 @@ func (s Server) handle(conn net.Conn) {
 	rdr := bufio.NewReaderSize(conn, readBuffer)
 	wrt := bufio.NewWriterSize(conn, writeBuffer)
 	p := &peer{
-		rdr: rdr,
-		wrt: wrt,
+		conn: conn,
+		rdr:  rdr,
+		wrt:  wrt,
 	}
 	defer conn.Close()
 
