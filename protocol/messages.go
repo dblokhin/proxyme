@@ -7,12 +7,12 @@ import (
 	"net"
 )
 
-type Auth struct {
+type AuthRequest struct {
 	Version uint8
-	Methods []authType
+	Methods []uint8
 }
 
-func (a *Auth) ReadFrom(r io.Reader) (n int64, err error) {
+func (a *AuthRequest) ReadFrom(r io.Reader) (n int64, err error) {
 	// read the protocol version first
 	if err = binary.Read(r, binary.BigEndian, &a.Version); err != nil {
 		return
@@ -26,7 +26,7 @@ func (a *Auth) ReadFrom(r io.Reader) (n int64, err error) {
 	}
 	n++
 
-	a.Methods = make([]authType, count)
+	a.Methods = make([]uint8, count)
 	for i := 0; i < int(count); i++ {
 		if err = binary.Read(r, binary.BigEndian, &a.Methods[i]); err != nil {
 			return
@@ -38,7 +38,7 @@ func (a *Auth) ReadFrom(r io.Reader) (n int64, err error) {
 }
 
 type AuthReply struct {
-	Method authType
+	Method uint8
 }
 
 func (a AuthReply) WriteTo(w io.Writer) (n int64, err error) {
@@ -57,7 +57,7 @@ func (a AuthReply) WriteTo(w io.Writer) (n int64, err error) {
 	return
 }
 
-type Command struct {
+type CommandRequest struct {
 	Version uint8 // MUST BE 5
 	Cmd     uint8 // support only CONNECT
 	Rsv     uint8 // MUST BE 0
@@ -66,7 +66,7 @@ type Command struct {
 	Port    uint16
 }
 
-func (c *Command) ReadFrom(r io.Reader) (n int64, err error) {
+func (c *CommandRequest) ReadFrom(r io.Reader) (n int64, err error) {
 	if err = binary.Read(r, binary.BigEndian, &c.Version); err != nil {
 		return
 	}
@@ -110,7 +110,7 @@ func (c *Command) ReadFrom(r io.Reader) (n int64, err error) {
 }
 
 // CanonicalAddr string that accept net.Dial(): [host]:[port]
-func (c *Command) CanonicalAddr() string {
+func (c *CommandRequest) CanonicalAddr() string {
 	// validate
 	switch c.Atyp {
 	case atypIpv4, atypIpv6, atypDomainName:
