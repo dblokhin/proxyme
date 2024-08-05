@@ -25,12 +25,18 @@ func NewServer(externalIP string) (Server, error) {
 	}
 
 	return Server{
-		protocol: protocol.Sock5{
-			ExternalIP: addr.AsSlice(),
-		},
-		done: make(chan any),
-		once: new(sync.Once),
+		protocol: protocol.New(addr.AsSlice()),
+		done:     make(chan any),
+		once:     new(sync.Once),
 	}, nil
+}
+
+func (s Server) EnableNoAuth() {
+	s.protocol.EnableNoAuth()
+}
+
+func (s Server) EnableUsernameAuth(fn func(user, pass string) error) {
+	s.protocol.EnableUsernameAuth(fn)
 }
 
 func (s Server) Run(addr string) error {
@@ -65,13 +71,13 @@ func (s Server) Run(addr string) error {
 func (s Server) handle(conn net.Conn) {
 	defer conn.Close()
 
-	p := protocol.NewPeer(conn)
-	state := s.protocol.InitState(p)
+	client := protocol.NewClient(conn)
+	state := s.protocol.InitState(client)
 	for state != nil {
-		state = state(p)
+		state = state(client)
 	}
 
-	if err := p.LastError(); err != nil {
+	if err := client.LastError(); err != nil {
 		log.Println(err)
 	}
 }

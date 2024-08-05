@@ -2,14 +2,6 @@ package protocol
 
 const protoVersion uint8 = 5
 
-// identify methods
-const (
-	identNoAuth uint8 = 0
-	identGSSAPI uint8 = 1
-	identLogin  uint8 = 2
-	identError  uint8 = 0xff
-)
-
 // address types based on RFC
 const (
 	atypIpv4       uint8 = 1
