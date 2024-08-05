@@ -13,20 +13,14 @@ func bind(dst net.Conn, src net.Conn) {
 
 	eg, _ := errgroup.WithContext(context.Background())
 	eg.Go(func() error {
-		for {
-			if _, err := io.Copy(dst, src); err != nil {
-				return err
-			}
-		}
+		_, err := io.Copy(dst, src)
+		return err
 	})
 
 	eg.Go(func() error {
-		for {
-			if _, err := io.Copy(src, dst); err != nil {
-				return err
-			}
-		}
+		_, err := io.Copy(src, dst)
+		return err
 	})
 
-	_ = eg.Wait()
+	eg.Wait()
 }
