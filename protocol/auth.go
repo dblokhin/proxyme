@@ -4,26 +4,24 @@ import (
 	"io"
 )
 
-type authType uint8
-
 // identify methods
 const (
-	identNoAuth authType = 0
-	identGSSAPI authType = 1
-	identLogin  authType = 2
-	identError  authType = 0xff
+	identNoAuth uint8 = 0
+	identGSSAPI uint8 = 1
+	identLogin  uint8 = 2
+	identError  uint8 = 0xff
 )
 
 type authHandler interface {
 	// methodID according to rfc 1928 method of authenticity
-	methodID() authType
+	methodID() uint8
 	// auth conducts auth on conn (and returns upgraded conn if needed)
 	auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error)
 }
 
 type noAuth struct{}
 
-func (n noAuth) methodID() authType {
+func (n noAuth) methodID() uint8 {
 	return identNoAuth
 }
 
@@ -35,7 +33,7 @@ type usernameAuth struct {
 	validator func(user, pass string) error
 }
 
-func (l usernameAuth) methodID() authType {
+func (l usernameAuth) methodID() uint8 {
 	return identLogin
 }
 
@@ -47,7 +45,7 @@ func (l usernameAuth) auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) 
 type gssapiAuth struct {
 }
 
-func (g gssapiAuth) methodID() authType {
+func (g gssapiAuth) methodID() uint8 {
 	//TODO implement me
 	panic("implement me")
 }

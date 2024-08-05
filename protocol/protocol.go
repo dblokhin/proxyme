@@ -9,13 +9,13 @@ type State func(*Client) State
 
 // Sock5 implements Sock5 protocol
 type Sock5 struct {
-	authMethods map[authType]authHandler
+	authMethods map[uint8]authHandler
 	ExternalIP  net.IP // external address for clients to connect
 }
 
 func New(externalIP net.IP) Sock5 {
 	return Sock5{
-		authMethods: make(map[authType]authHandler),
+		authMethods: make(map[uint8]authHandler),
 		ExternalIP:  externalIP,
 	}
 }
@@ -34,7 +34,7 @@ func (s Sock5) EnableGSSAPIAuth() {
 
 // InitState starts protocol negotiation
 func (s Sock5) InitState(c *Client) State {
-	var msg Auth
+	var msg AuthRequest
 
 	if _, err := msg.ReadFrom(c.rdr); err != nil {
 		c.err = fmt.Errorf("sock read: %w", err)
@@ -50,7 +50,7 @@ func (s Sock5) InitState(c *Client) State {
 	return s.chooseAuthState(msg)
 }
 
-func (s Sock5) chooseAuthState(msg Auth) State {
+func (s Sock5) chooseAuthState(msg AuthRequest) State {
 	return func(c *Client) State {
 		for _, code := range msg.Methods {
 			if method, ok := s.authMethods[code]; ok {
@@ -62,7 +62,7 @@ func (s Sock5) chooseAuthState(msg Auth) State {
 	}
 }
 
-func (s Sock5) errAuthState(msg Auth) State {
+func (s Sock5) errAuthState(msg AuthRequest) State {
 	return func(c *Client) State {
 		reply := AuthReply{Method: identError}
 
@@ -101,7 +101,7 @@ func (s Sock5) authState(method authHandler) State {
 }
 
 func (s Sock5) newCommandState(c *Client) State {
-	var msg Command
+	var msg CommandRequest
 
 	if _, err := msg.ReadFrom(c.rdr); err != nil {
 		c.err = fmt.Errorf("sock read: %w", err)
@@ -128,7 +128,7 @@ func (s Sock5) newCommandState(c *Client) State {
 	}
 }
 
-func (s Sock5) connectState(msg Command) State {
+func (s Sock5) connectState(msg CommandRequest) State {
 	return func(c *Client) State {
 		conn, err := net.Dial("tcp", msg.CanonicalAddr())
 		if err != nil {
@@ -155,7 +155,7 @@ func (s Sock5) connectState(msg Command) State {
 	}
 }
 
-func (s Sock5) commandErrorState(msg Command, status uint8) State {
+func (s Sock5) commandErrorState(msg CommandRequest, status uint8) State {
 	reply := CommandReply{
 		Rep:  status,
 		Rsv:  0,
@@ -174,7 +174,7 @@ func (s Sock5) commandErrorState(msg Command, status uint8) State {
 	}
 }
 
-func (s Sock5) bindState(msg Command) State {
+func (s Sock5) bindState(msg CommandRequest) State {
 	return func(c *Client) State {
 		ls, err := net.Listen("tcp", fmt.Sprintf("%s:0", s.ExternalIP))
 		if err != nil {
