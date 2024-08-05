@@ -1,4 +1,3 @@
-// 13.04.18 proxyme
 // Proxyme Developers. All rights reserved.
 // License can be found in the LICENSE file.
 
@@ -9,14 +8,11 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"proxyme"
-	"runtime"
 )
 
 // Staring main program here.
 // proxyme is so easy!
 func main() {
-	runtime.GOMAXPROCS(8)
-
 	// it's just http profiler
 	go http.ListenAndServe("0.0.0.0:8081", nil)
 
@@ -25,6 +21,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	srv.EnableNoAuth()
 
 	// start proxy
 	log.Println("starting")

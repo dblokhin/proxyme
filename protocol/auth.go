@@ -1,56 +1,58 @@
 package protocol
 
 import (
-	"encoding/binary"
 	"io"
 )
 
-type Auth struct {
-	Version uint8
-	Methods []uint8
+type authType uint8
+
+// identify methods
+const (
+	identNoAuth authType = 0
+	identGSSAPI authType = 1
+	identLogin  authType = 2
+	identError  authType = 0xff
+)
+
+type authHandler interface {
+	// methodID according to rfc 1928 method of authenticity
+	methodID() authType
+	// auth conducts auth on conn (and returns upgraded conn if needed)
+	auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error)
 }
 
-func (a *Auth) ReadFrom(r io.Reader) (n int64, err error) {
-	// read the protocol version first
-	if err = binary.Read(r, binary.BigEndian, &a.Version); err != nil {
-		return
-	}
-	n++
+type noAuth struct{}
 
-	// read identity methods
-	var count uint8
-	if err = binary.Read(r, binary.BigEndian, &count); err != nil {
-		return
-	}
-	n++
-
-	a.Methods = make([]uint8, count)
-	for i := 0; i < int(count); i++ {
-		if err = binary.Read(r, binary.BigEndian, &a.Methods[i]); err != nil {
-			return
-		}
-		n++
-	}
-
-	return
+func (n noAuth) methodID() authType {
+	return identNoAuth
 }
 
-type AuthReply struct {
-	Method uint8
+func (n noAuth) auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) {
+	return conn, nil
 }
 
-func (a AuthReply) WriteTo(w io.Writer) (n int64, err error) {
-	// write Sock5 version
-	if err = binary.Write(w, binary.BigEndian, protoVersion); err != nil {
-		return
-	}
-	n++
+type usernameAuth struct {
+	validator func(user, pass string) error
+}
 
-	// write method ID
-	if err = binary.Write(w, binary.BigEndian, a.Method); err != nil {
-		return
-	}
-	n++
+func (l usernameAuth) methodID() authType {
+	return identLogin
+}
 
-	return
+func (l usernameAuth) auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+type gssapiAuth struct {
+}
+
+func (g gssapiAuth) methodID() authType {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (g gssapiAuth) auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) {
+	//TODO implement me
+	panic("implement me")
 }
