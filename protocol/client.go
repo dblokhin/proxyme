@@ -6,7 +6,7 @@ import (
 	"net"
 )
 
-type Peer struct {
+type Client struct {
 	conn net.Conn
 	rdr  *bufio.Reader
 	wrt  *bufio.Writer
@@ -14,11 +14,11 @@ type Peer struct {
 	err error // last error during connection
 }
 
-func (p Peer) LastError() error {
+func (p Client) LastError() error {
 	return p.err
 }
 
-func (p Peer) WriteMessage(msg io.WriterTo) error {
+func (p Client) WriteMessage(msg io.WriterTo) error {
 	if _, err := msg.WriteTo(p.wrt); err != nil {
 		return err
 	}
@@ -30,7 +30,7 @@ func (p Peer) WriteMessage(msg io.WriterTo) error {
 	return nil
 }
 
-func NewPeer(conn net.Conn) *Peer {
+func NewPeer(conn net.Conn) *Client {
 	const (
 		readBuffer  = 32 * 1024
 		writeBuffer = 4 * 1024
@@ -39,7 +39,7 @@ func NewPeer(conn net.Conn) *Peer {
 	rdr := bufio.NewReaderSize(conn, readBuffer)
 	wrt := bufio.NewWriterSize(conn, writeBuffer)
 
-	return &Peer{
+	return &Client{
 		conn: conn,
 		rdr:  rdr,
 		wrt:  wrt,

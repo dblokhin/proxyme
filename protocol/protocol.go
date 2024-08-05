@@ -5,7 +5,7 @@ import (
 	"net"
 )
 
-type State func(*Peer) State
+type State func(*Client) State
 
 // Sock5 implements Sock5 protocol
 type Sock5 struct {
@@ -14,7 +14,7 @@ type Sock5 struct {
 }
 
 // InitState starts protocol negotiation
-func (s Sock5) InitState(p *Peer) State {
+func (s Sock5) InitState(p *Client) State {
 	var msg Auth
 
 	if _, err := msg.ReadFrom(p.rdr); err != nil {
@@ -32,7 +32,7 @@ func (s Sock5) InitState(p *Peer) State {
 }
 
 func (s Sock5) chooseAuthState(msg Auth) State {
-	return func(p *Peer) State {
+	return func(p *Client) State {
 		for _, method := range msg.Methods {
 			switch method {
 			case identNoAuth:
@@ -49,7 +49,7 @@ func (s Sock5) chooseAuthState(msg Auth) State {
 }
 
 func (s Sock5) errAuthState(msg Auth) State {
-	return func(p *Peer) State {
+	return func(p *Client) State {
 		reply := AuthReply{Method: identError}
 
 		if err := p.WriteMessage(reply); err != nil {
@@ -64,7 +64,7 @@ func (s Sock5) errAuthState(msg Auth) State {
 }
 
 func (s Sock5) authState(msg Auth) State {
-	return func(p *Peer) State {
+	return func(p *Client) State {
 		reply := AuthReply{Method: identNoAuth}
 
 		if err := p.WriteMessage(reply); err != nil {
@@ -76,7 +76,7 @@ func (s Sock5) authState(msg Auth) State {
 	}
 }
 
-func (s Sock5) newCommandState(p *Peer) State {
+func (s Sock5) newCommandState(p *Client) State {
 	var msg Command
 
 	if _, err := msg.ReadFrom(p.rdr); err != nil {
@@ -105,7 +105,7 @@ func (s Sock5) newCommandState(p *Peer) State {
 }
 
 func (s Sock5) connectState(msg Command) State {
-	return func(p *Peer) State {
+	return func(p *Client) State {
 		conn, err := net.Dial("tcp", msg.CanonicalAddr())
 		if err != nil {
 			p.err = fmt.Errorf("dial: %w", err)
@@ -140,7 +140,7 @@ func (s Sock5) commandErrorState(msg Command, status uint8) State {
 		Port: msg.Port,
 	}
 
-	return func(p *Peer) State {
+	return func(p *Client) State {
 		if err := p.WriteMessage(reply); err != nil {
 			p.err = fmt.Errorf("sock write: %w", err)
 			return nil
@@ -151,7 +151,7 @@ func (s Sock5) commandErrorState(msg Command, status uint8) State {
 }
 
 func (s Sock5) bindState(msg Command) State {
-	return func(p *Peer) State {
+	return func(p *Client) State {
 		ls, err := net.Listen("tcp", fmt.Sprintf("%s:0", s.ExternalIP))
 		if err != nil {
 			p.err = fmt.Errorf("bind listen: %w", err)
