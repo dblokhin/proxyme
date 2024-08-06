@@ -5,6 +5,39 @@ import (
 	"net"
 )
 
+// as defined http://www.ietf.org/rfc/rfc1928.txt
+
+const (
+	protoVersion          uint8 = 5
+	subnegotiationVersion uint8 = 1
+)
+
+// address types based on RFC
+const (
+	atypIpv4       uint8 = 1
+	atypDomainName uint8 = 3
+	atypIpv6       uint8 = 4
+)
+
+// protocol commands
+const (
+	cmdConnect  uint8 = 1
+	cmdBind     uint8 = 2
+	cmdUDPAssoc uint8 = 3
+)
+
+const (
+	commandStatusSucceeded           uint8 = 0
+	commandStatusSockFailure         uint8 = 1 // general SOCKS server failure
+	commandStatusNowAllowed          uint8 = 2 // connection not allowed by ruleset
+	commandStatusNetworkUnreachable  uint8 = 3 // Network unreachable
+	commandStatusHostUnreachable     uint8 = 4 // Host unreachable
+	commandStatusRefused             uint8 = 5 // Connection refused
+	commandStatusTTLExpired          uint8 = 6 // TTL expired
+	commandStatusNotSupported        uint8 = 7 // Command not supported
+	commandStatusAddressNotSupported uint8 = 8 // Address type not supported
+)
+
 type State func(*Client) State
 
 // Sock5 implements Sock5 protocol
@@ -21,15 +54,15 @@ func New(externalIP net.IP) Sock5 {
 }
 
 func (s Sock5) EnableNoAuth() {
-	s.authMethods[identNoAuth] = noAuth{}
+	s.authMethods[authTypeNoAuth] = noAuth{}
 }
 
-func (s Sock5) EnableUsernameAuth(fn func(string, string) error) {
-	s.authMethods[identLogin] = usernameAuth{fn}
+func (s Sock5) EnableUsernameAuth(fn func([]byte, []byte) error) {
+	s.authMethods[authTypeLogin] = usernameAuth{fn}
 }
 
 func (s Sock5) EnableGSSAPIAuth() {
-	s.authMethods[identGSSAPI] = gssapiAuth{}
+	s.authMethods[authTypeGSSAPI] = gssapiAuth{}
 }
 
 // InitState starts protocol negotiation
@@ -64,7 +97,7 @@ func (s Sock5) chooseAuthState(msg AuthRequest) State {
 
 func (s Sock5) errAuthState(msg AuthRequest) State {
 	return func(c *Client) State {
-		reply := AuthReply{Method: identError}
+		reply := AuthReply{Method: authTypeError}
 
 		if err := c.WriteMessage(reply); err != nil {
 			c.err = fmt.Errorf("sock write: %w", err)
@@ -87,7 +120,7 @@ func (s Sock5) authState(method authHandler) State {
 			return nil
 		}
 
-		// make authenticity
+		// do authentication
 		conn, err := method.auth(c.conn)
 		if err != nil {
 			c.err = fmt.Errorf("auth: %w", err)
@@ -120,11 +153,11 @@ func (s Sock5) newCommandState(c *Client) State {
 	case cmdBind:
 		return s.bindState(msg)
 	case cmdUDPAssoc:
-		return s.commandErrorState(msg, replyStatusNotSupported)
+		return s.commandErrorState(msg, commandStatusNotSupported)
 
 	default:
 		c.err = fmt.Errorf("client sent unsupported commandMessage: %d", msg.Cmd)
-		return s.commandErrorState(msg, replyStatusNotSupported)
+		return s.commandErrorState(msg, commandStatusNotSupported)
 	}
 }
 
@@ -133,11 +166,11 @@ func (s Sock5) connectState(msg CommandRequest) State {
 		conn, err := net.Dial("tcp", msg.CanonicalAddr())
 		if err != nil {
 			c.err = fmt.Errorf("dial: %w", err)
-			return s.commandErrorState(msg, replyStatusHostUnreachable)
+			return s.commandErrorState(msg, commandStatusHostUnreachable)
 		}
 
 		reply := CommandReply{
-			Rep:  replyStatusSucceeded,
+			Rep:  commandStatusSucceeded,
 			Rsv:  0,
 			Atyp: msg.Atyp,
 			Addr: msg.Addr,
@@ -179,7 +212,7 @@ func (s Sock5) bindState(msg CommandRequest) State {
 		ls, err := net.Listen("tcp", fmt.Sprintf("%s:0", s.ExternalIP))
 		if err != nil {
 			c.err = fmt.Errorf("bind listen: %w", err)
-			return s.commandErrorState(msg, replyStatusSockFailure)
+			return s.commandErrorState(msg, commandStatusSockFailure)
 		}
 
 		port := uint16(ls.Addr().(*net.TCPAddr).Port)
@@ -191,7 +224,7 @@ func (s Sock5) bindState(msg CommandRequest) State {
 		}
 
 		reply := CommandReply{
-			Rep:  replyStatusSucceeded,
+			Rep:  commandStatusSucceeded,
 			Rsv:  0,
 			Atyp: atyp,
 			Addr: s.ExternalIP,
@@ -207,7 +240,7 @@ func (s Sock5) bindState(msg CommandRequest) State {
 		conn, err := ls.Accept()
 		if err != nil {
 			c.err = fmt.Errorf("bind accept: %w", err)
-			return s.commandErrorState(msg, replyStatusSockFailure)
+			return s.commandErrorState(msg, commandStatusSockFailure)
 		}
 
 		// send first reply (on connect)
