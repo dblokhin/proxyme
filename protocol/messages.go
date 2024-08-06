@@ -174,3 +174,65 @@ func (r CommandReply) WriteTo(w io.Writer) (n int64, err error) {
 	n += 2
 	return
 }
+
+// LoginRequest clients request username/passwd auth scenario
+// https://www.ietf.org/rfc/rfc1929.txt
+type LoginRequest struct {
+	Ver      uint8 // MUST BE 1
+	Username []byte
+	Passwd   []byte
+}
+
+func (l *LoginRequest) ReadFrom(r io.Reader) (n int64, err error) {
+	if err = binary.Read(r, binary.BigEndian, &l.Ver); err != nil {
+		return
+	}
+	n++
+
+	// read login
+	var size uint8
+	if err = binary.Read(r, binary.BigEndian, &size); err != nil {
+		return
+	}
+	n++
+
+	l.Username = make([]byte, size)
+	if _, err = io.ReadFull(r, l.Username); err != nil {
+		return
+	}
+	n += int64(size)
+
+	// read password
+	if err = binary.Read(r, binary.BigEndian, &size); err != nil {
+		return
+	}
+	n++
+
+	l.Passwd = make([]byte, size)
+	if _, err = io.ReadFull(r, l.Passwd); err != nil {
+		return
+	}
+	n += int64(size)
+
+	return
+}
+
+// LoginReply servers respond on request username/password authentication
+// https://www.ietf.org/rfc/rfc1929.txt
+type LoginReply struct {
+	Status uint8
+}
+
+func (l LoginReply) WriteTo(w io.Writer) (n int64, err error) {
+	if err = binary.Write(w, binary.BigEndian, subnegotiationVersion); err != nil {
+		return
+	}
+	n++
+
+	if err = binary.Write(w, binary.BigEndian, l.Status); err != nil {
+		return
+	}
+	n++
+
+	return
+}
