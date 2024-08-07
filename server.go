@@ -35,7 +35,7 @@ func (s Server) EnableNoAuth() {
 	s.protocol.EnableNoAuth()
 }
 
-func (s Server) EnableUsernameAuth(fn func(user, pass string) error) {
+func (s Server) EnableUsernameAuth(fn func(user, pass []byte) error) {
 	s.protocol.EnableUsernameAuth(fn)
 }
 
