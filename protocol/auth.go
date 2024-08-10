@@ -3,7 +3,6 @@ package protocol
 import (
 	"fmt"
 	"io"
-	"time"
 )
 
 // as defined http://www.ietf.org/rfc/rfc1928.txt
@@ -49,9 +48,6 @@ func (l usernameAuth) methodID() uint8 {
 }
 
 func (l usernameAuth) auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) {
-	// auth will take 1s for every request
-	finish := time.Now().Add(time.Second)
-
 	var req LoginRequest
 	if _, err := req.ReadFrom(conn); err != nil {
 		return conn, fmt.Errorf("sock read: %w", err)
@@ -66,8 +62,6 @@ func (l usernameAuth) auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) 
 	if err != nil {
 		resp.Status = loginStatusDenied
 	}
-
-	time.Sleep(finish.Sub(time.Now()))
 
 	// server response
 	if _, err := resp.WriteTo(conn); err != nil {

@@ -25,7 +25,7 @@ func main() {
 
 	// start proxy
 	log.Println("starting")
-	if err := srv.Run(":1080"); err != nil {
+	if err := srv.ListenAndServer(":1080"); err != nil {
 		log.Println(err)
 	}
 }

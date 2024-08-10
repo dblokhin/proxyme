@@ -2,7 +2,9 @@ package protocol
 
 import (
 	"fmt"
+	"io"
 	"net"
+	"sync"
 )
 
 // as defined http://www.ietf.org/rfc/rfc1928.txt
@@ -261,4 +263,24 @@ func validateProtocolVersion(version uint8) error {
 	}
 
 	return nil
+}
+
+// nolint
+func bind(dst, src io.ReadWriteCloser) {
+	var once sync.Once
+
+	stop := func() {
+		once.Do(func() {
+			src.Close()
+			dst.Close()
+		})
+	}
+
+	defer stop()
+
+	go func() {
+		io.Copy(dst, src)
+	}()
+
+	io.Copy(src, dst)
 }

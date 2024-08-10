@@ -11,7 +11,7 @@ build:
 	$(GOBUILD) -o $(BINARY_NAME) -v
 
 run:
-	$(GOBUILD) -o $(BINARY_NAME) -v . && ./$(BINARY_NAME)
+	$(GO) run ./cmd/main.go
 
 test:
 	$(GOTEST) -v ./...
