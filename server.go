@@ -6,9 +6,10 @@ import (
 	"log"
 	"net"
 	"net/netip"
-	"proxyme/protocol"
 	"sync"
 	"time"
+
+	"proxyme/protocol"
 )
 
 type Server struct {
