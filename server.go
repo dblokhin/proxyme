@@ -8,12 +8,10 @@ import (
 	"net/netip"
 	"sync"
 	"time"
-
-	"proxyme/protocol"
 )
 
 type Server struct {
-	protocol protocol.Sock5
+	protocol socks5
 	done     chan any
 	once     *sync.Once
 }
@@ -26,9 +24,12 @@ func NewServer(bindIP string) (Server, error) {
 	}
 
 	return Server{
-		protocol: protocol.New(addr.AsSlice()),
-		done:     make(chan any),
-		once:     new(sync.Once),
+		protocol: socks5{
+			authMethods: make(map[authMethod]authHandler),
+			bindIP:      addr.AsSlice(),
+		},
+		done: make(chan any),
+		once: new(sync.Once),
 	}, nil
 }
 
@@ -72,7 +73,7 @@ func (s Server) ListenAndServer(addr string) error {
 func (s Server) handle(conn net.Conn) {
 	defer conn.Close()
 
-	client := protocol.NewClient(conn)
+	client := NewClient(conn)
 	state := s.protocol.InitState(client)
 	for state != nil {
 		state = state(client)

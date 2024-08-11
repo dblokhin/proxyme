@@ -14,7 +14,12 @@ import (
 // proxyme is so easy!
 func main() {
 	// it's just http profiler
-	go http.ListenAndServe("0.0.0.0:8081", nil)
+	go func() {
+		err := http.ListenAndServe("0.0.0.0:8081", nil)
+		if err != nil {
+			log.Println(err)
+		}
+	}()
 
 	// init server structure
 	srv, err := proxyme.NewServer("127.0.0.1")

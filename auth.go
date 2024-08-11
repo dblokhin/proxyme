@@ -1,4 +1,4 @@
-package protocol
+package proxyme
 
 import (
 	"fmt"
@@ -7,31 +7,25 @@ import (
 
 // as defined http://www.ietf.org/rfc/rfc1928.txt
 
-// identify methods
-const (
-	authTypeNoAuth uint8 = 0
-	authTypeGSSAPI uint8 = 1
-	authTypeLogin  uint8 = 2
-	authTypeError  uint8 = 0xff
-)
-
 // as defined http://www.ietf.org/rfc/rfc1929.txt
+type loginStatus uint8
+
 const (
-	loginStatusSuccess uint8 = 0
-	loginStatusDenied  uint8 = 0xff
+	success loginStatus = 0
+	denied  loginStatus = 0xff
 )
 
 type authHandler interface {
-	// methodID according to rfc 1928 method of authenticity
-	methodID() uint8
-	// auth conducts auth on conn (and returns upgraded conn if needed)
+	// auth method according to rfc 1928
+	method() authMethod
+	// auth conducts auth on the connection (and returns upgraded conn if needed)
 	auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error)
 }
 
 type noAuth struct{}
 
-func (n noAuth) methodID() uint8 {
-	return authTypeNoAuth
+func (n noAuth) method() authMethod {
+	return typeNoAuth
 }
 
 func (n noAuth) auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) {
@@ -40,27 +34,27 @@ func (n noAuth) auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) {
 }
 
 type usernameAuth struct {
-	validator func(user, pass []byte) error
+	authenticator func(user, pass []byte) error
 }
 
-func (l usernameAuth) methodID() uint8 {
-	return authTypeLogin
+func (l usernameAuth) method() authMethod {
+	return typeLogin
 }
 
 func (l usernameAuth) auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) {
-	var req LoginRequest
+	var req loginRequest
 	if _, err := req.ReadFrom(conn); err != nil {
 		return conn, fmt.Errorf("sock read: %w", err)
 	}
 
-	if req.Ver != subnegotiationVersion {
-		return conn, fmt.Errorf("client sent invalid subnegation version: %d", req.Ver)
+	if err := req.validate(); err != nil {
+		return conn, err
 	}
 
-	resp := LoginReply{loginStatusSuccess}
-	err := l.validator(req.Username, req.Passwd)
+	resp := loginReply{success}
+	err := l.authenticator(req.username, req.password)
 	if err != nil {
-		resp.Status = loginStatusDenied
+		resp.status = denied
 	}
 
 	// server response
@@ -77,7 +71,7 @@ func (l usernameAuth) auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) 
 type gssapiAuth struct {
 }
 
-func (g gssapiAuth) methodID() uint8 {
+func (g gssapiAuth) method() authMethod {
 	//TODO implement me
 	panic("implement me")
 }
