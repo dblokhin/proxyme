@@ -79,8 +79,8 @@ func New(opts Options) (Server, error) {
 	}, nil
 }
 
-func (s Server) ListenAndServe(addr string) error {
-	ls, err := net.Listen("tcp4", addr)
+func (s Server) ListenAndServe(network, addr string) error {
+	ls, err := net.Listen(network, addr)
 	if err != nil {
 		return fmt.Errorf("listen: %q", err)
 	}

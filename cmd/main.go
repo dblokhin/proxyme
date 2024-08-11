@@ -19,7 +19,7 @@ func main() {
 	}
 
 	// start socks5 proxy
-	if err := srv.ListenAndServe(":1080"); err != nil {
+	if err := srv.ListenAndServe("tcp4", ":1080"); err != nil {
 		log.Println(err)
 	}
 }
