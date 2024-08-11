@@ -47,7 +47,7 @@ type commandStatus uint8
 const (
 	succeeded           commandStatus = 0
 	sockFailure         commandStatus = 1 // general SOCKS server failure
-	nowAllowed          commandStatus = 2 // connection not allowed by ruleset
+	notAllowed          commandStatus = 2 // connection not allowed by ruleset
 	networkUnreachable  commandStatus = 3 // Network unreachable
 	hostUnreachable     commandStatus = 4 // Host unreachable
 	refused             commandStatus = 5 // Connection refused
@@ -150,6 +150,9 @@ func (s socks5) newCommandState(c *client) state {
 	case connect:
 		return s.connectState(msg)
 	case bind:
+		if len(s.bindIP) == 0 {
+			return s.commandErrorState(msg, notAllowed)
+		}
 		return s.bindState(msg)
 	case udpAssoc:
 		return s.commandErrorState(msg, notSupported)
