@@ -68,15 +68,15 @@ func (l usernameAuth) auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) 
 	return conn, err
 }
 
-type gssapiAuth struct {
-}
-
-func (g gssapiAuth) method() authMethod {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (g gssapiAuth) auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) {
-	//TODO implement me
-	panic("implement me")
-}
+//type gssapiAuth struct {
+//}
+//
+//func (g gssapiAuth) method() authMethod {
+//	//TODO implement me
+//	panic("implement me")
+//}
+//
+//func (g gssapiAuth) auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) {
+//	//TODO implement me
+//	panic("implement me")
+//}

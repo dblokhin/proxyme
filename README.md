@@ -10,6 +10,7 @@ Feedback and contributions are greatly appreciated!
 ## Features
 - Small, easy to learn Golang codebase;
 - **CONNECT command**: Standard command for connecting to a destination server.
+- **Custom CONNECT**: Allows creating customs tunnels to destination server.
 - **BIND command**: Allows incoming connections on a specified IP and port.
 - **AUTH support**:
     - No authentication (anonymous access)

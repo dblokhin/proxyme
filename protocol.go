@@ -56,28 +56,17 @@ const (
 	addressNotSupported commandStatus = 8 // Address type not supported
 )
 
-type State func(*Client) State
+type state func(*client) state
 
 // socks5 implements socks5 protocol
 type socks5 struct {
 	authMethods map[authMethod]authHandler
-	bindIP      net.IP // external address for clients to connect
+	bindIP      net.IP // external address for BIND command
+	connect     func(addr string) (io.ReadWriteCloser, error)
 }
 
-func (s socks5) EnableNoAuth() {
-	s.authMethods[typeNoAuth] = noAuth{}
-}
-
-func (s socks5) EnableUsernameAuth(fn func([]byte, []byte) error) {
-	s.authMethods[typeLogin] = usernameAuth{fn}
-}
-
-func (s socks5) EnableGSSAPIAuth() {
-	s.authMethods[typeGSSAPI] = gssapiAuth{}
-}
-
-// InitState starts protocol negotiation
-func (s socks5) InitState(c *Client) State {
+// initState starts protocol negotiation
+func (s socks5) initState(c *client) state {
 	var msg authRequest
 
 	if _, err := msg.ReadFrom(c.rdr); err != nil {
@@ -93,8 +82,8 @@ func (s socks5) InitState(c *Client) State {
 	return s.chooseAuthState(msg)
 }
 
-func (s socks5) chooseAuthState(msg authRequest) State {
-	return func(c *Client) State {
+func (s socks5) chooseAuthState(msg authRequest) state {
+	return func(c *client) state {
 		for _, code := range msg.methods {
 			if method, ok := s.authMethods[code]; ok {
 				return s.authState(method)
@@ -105,8 +94,8 @@ func (s socks5) chooseAuthState(msg authRequest) State {
 	}
 }
 
-func (s socks5) errAuthState(msg authRequest) State {
-	return func(c *Client) State {
+func (s socks5) errAuthState(msg authRequest) state {
+	return func(c *client) state {
 		reply := authReply{method: typeError}
 
 		if err := c.WriteMessage(reply); err != nil {
@@ -120,8 +109,8 @@ func (s socks5) errAuthState(msg authRequest) State {
 	}
 }
 
-func (s socks5) authState(method authHandler) State {
-	return func(c *Client) State {
+func (s socks5) authState(method authHandler) state {
+	return func(c *client) state {
 		// send chosen auth method
 		reply := authReply{method: method.method()}
 
@@ -143,7 +132,7 @@ func (s socks5) authState(method authHandler) State {
 	}
 }
 
-func (s socks5) newCommandState(c *Client) State {
+func (s socks5) newCommandState(c *client) state {
 	var msg commandRequest
 
 	if _, err := msg.ReadFrom(c.rdr); err != nil {
@@ -171,9 +160,9 @@ func (s socks5) newCommandState(c *Client) State {
 	}
 }
 
-func (s socks5) connectState(msg commandRequest) State {
-	return func(c *Client) State {
-		conn, err := net.Dial("tcp", msg.canonicalAddr())
+func (s socks5) connectState(msg commandRequest) state {
+	return func(c *client) state {
+		conn, err := s.connect(msg.canonicalAddr())
 		if err != nil {
 			c.err = fmt.Errorf("dial: %w", err)
 			return s.commandErrorState(msg, hostUnreachable)
@@ -192,13 +181,13 @@ func (s socks5) connectState(msg commandRequest) State {
 			return nil
 		}
 
-		link(conn, c.conn.(net.Conn))
+		link(conn, c.conn)
 
 		return nil
 	}
 }
 
-func (s socks5) commandErrorState(msg commandRequest, status commandStatus) State {
+func (s socks5) commandErrorState(msg commandRequest, status commandStatus) state {
 	reply := commandReply{
 		rep:         status,
 		rsv:         0,
@@ -207,7 +196,7 @@ func (s socks5) commandErrorState(msg commandRequest, status commandStatus) Stat
 		port:        msg.port,
 	}
 
-	return func(c *Client) State {
+	return func(c *client) state {
 		if err := c.WriteMessage(reply); err != nil {
 			c.err = fmt.Errorf("sock write: %w", err)
 			return nil
@@ -217,26 +206,26 @@ func (s socks5) commandErrorState(msg commandRequest, status commandStatus) Stat
 	}
 }
 
-func (s socks5) bindState(msg commandRequest) State {
-	return func(c *Client) State {
+func (s socks5) bindState(msg commandRequest) state {
+	return func(c *client) state {
 		ls, err := net.Listen("tcp", fmt.Sprintf("%s:0", s.bindIP))
 		if err != nil {
-			c.err = fmt.Errorf("link listen: %w", err)
+			c.err = fmt.Errorf("bind: %w", err)
 			return s.commandErrorState(msg, sockFailure)
 		}
 
 		port := uint16(ls.Addr().(*net.TCPAddr).Port)
 		ip := ls.Addr().(*net.TCPAddr).IP
 
-		_atyp := ipv4
+		addrType := ipv4
 		if len(ip) != 4 {
-			_atyp = ipv6
+			addrType = ipv6
 		}
 
 		reply := commandReply{
 			rep:         succeeded,
 			rsv:         0,
-			addressType: _atyp,
+			addressType: addrType,
 			addr:        s.bindIP,
 			port:        port,
 		}
@@ -263,6 +252,10 @@ func (s socks5) bindState(msg commandRequest) State {
 
 		return nil
 	}
+}
+
+func defaultConnect(addr string) (io.ReadWriteCloser, error) {
+	return net.Dial("tcp", addr)
 }
 
 // nolint

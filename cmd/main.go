@@ -5,32 +5,21 @@ package main
 
 import (
 	"log"
-	"net/http"
-	_ "net/http/pprof"
 	"proxyme"
 )
 
-// Staring main program here.
-// proxyme is so easy!
 func main() {
-	// it's just http profiler
-	go func() {
-		err := http.ListenAndServe("0.0.0.0:8081", nil)
-		if err != nil {
-			log.Println(err)
-		}
-	}()
+	opts := proxyme.Options{
+		AllowNoAuth: true,
+	}
 
-	// init server structure
-	srv, err := proxyme.NewServer("127.0.0.1")
+	srv, err := proxyme.New(opts)
 	if err != nil {
 		log.Fatal(err)
 	}
-	srv.EnableNoAuth()
 
-	// start proxy
-	log.Println("starting")
-	if err := srv.ListenAndServer(":1080"); err != nil {
+	// start socks5 proxy
+	if err := srv.ListenAndServe(":1080"); err != nil {
 		log.Println(err)
 	}
 }
