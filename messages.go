@@ -18,14 +18,14 @@ func (a *authRequest) ReadFrom(r io.Reader) (n int64, err error) {
 	}
 	n++
 
-	var count uint8
-	if err = binary.Read(r, binary.BigEndian, &count); err != nil {
+	var size uint8
+	if err = binary.Read(r, binary.BigEndian, &size); err != nil {
 		return
 	}
 	n++
 
-	a.methods = make([]authMethod, count)
-	for i := 0; i < int(count); i++ {
+	a.methods = make([]authMethod, size)
+	for i := 0; i < int(size); i++ {
 		if err = binary.Read(r, binary.BigEndian, &a.methods[i]); err != nil {
 			return
 		}
@@ -39,17 +39,6 @@ func (a *authRequest) validate() error {
 	if a.version != protoVersion {
 		return fmt.Errorf("invalid auth.version: %d", a.version)
 	}
-
-	const invalidMethod authMethod = 3
-
-	l := 0
-	for i := 0; i < len(a.methods); i++ {
-		if a.methods[i] < invalidMethod {
-			a.methods[l] = a.methods[i]
-			l++
-		}
-	}
-	a.methods = a.methods[:l]
 
 	if len(a.methods) == 0 {
 		return fmt.Errorf("empty auth.methods")
