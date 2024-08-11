@@ -18,7 +18,26 @@ Feedback and contributions are greatly appreciated!
 - plan: GSSAPI method auth
 
 ## Getting Started
-### Installation
+### Source usage
+```go
+func main() {
+    opts := proxyme.Options{
+        AllowNoAuth: true,
+    }
+
+    srv, err := proxyme.New(opts)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // start socks5 proxy
+    if err := srv.ListenAndServe("tcp4", ":1080"); err != nil {
+        log.Println(err)
+    }
+}
+```
+
+### Binary installation
 
 1. **Clone the repository:**
    ```bash
