@@ -1,6 +1,6 @@
-# Proxyme
-This is an efficient and lightweight implementation of a Socks5 Proxy written in pure Go (Golang) without logging user 
-activity. The proxy supports key features like CONNECT, BIND, and AUTH (both with and without username/password 
+# Proxyme SOCKS5 server
+This is an efficient and lightweight implementation of a Socks5 Proxy written in pure Go (Golang) without any
+dependencies. The proxy supports key features like CONNECT, BIND, and AUTH (both with and without username/password 
 authentication).
 
 ## Project Status
