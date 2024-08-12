@@ -57,6 +57,11 @@ func main() {
    ./proxyme --port 1080 --noauth # run without authentication
    ```
 
+4. **Check the proxy:**
+   ```bash
+   curl --socks5 localhost:1080 https://google.com
+   ```
+   
 ### Docker Usage
 You can also run the socks5 proxy within a Docker container.
 

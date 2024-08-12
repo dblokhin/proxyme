@@ -34,6 +34,6 @@ docker-build:
 	docker build -t $(BINARY_NAME) .
 
 docker-run:
-	docker run --rm -it $(BINARY_NAME)
+	docker run --rm -it -p 1080:1080 $(BINARY_NAME)
 
 .PHONY: build clean test run fmt lint deps docker-build docker-run
