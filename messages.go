@@ -2,9 +2,14 @@ package proxyme
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net"
+)
+
+var (
+	errInvalidAddr = errors.New("invalid address type")
 )
 
 type authRequest struct {
@@ -98,10 +103,19 @@ func (c *commandRequest) ReadFrom(r io.Reader) (n int64, err error) {
 
 	// read the string size
 	var size uint8
-	if err = binary.Read(r, binary.BigEndian, &size); err != nil {
-		return
+	switch c.addressType {
+	case ipv4:
+		size = net.IPv4len
+	case ipv6:
+		size = net.IPv6len
+	case domainName:
+		if err = binary.Read(r, binary.BigEndian, &size); err != nil {
+			return
+		}
+		n++
+	default:
+		return n, errInvalidAddr
 	}
-	n++
 
 	c.addr = make([]byte, size)
 	if _, err = io.ReadFull(r, c.addr); err != nil {
@@ -191,12 +205,29 @@ func (r commandReply) WriteTo(w io.Writer) (n int64, err error) {
 	}
 	n += 1
 
-	if err = binary.Write(w, binary.BigEndian, uint8(len(r.addr))); err != nil {
-		return
+	var size uint8
+	switch r.addressType {
+	case ipv4:
+		size = net.IPv4len
+		if int(size) != len(r.addr) {
+			return n, errInvalidAddr
+		}
+	case ipv6:
+		size = net.IPv6len
+		if int(size) != len(r.addr) {
+			return n, errInvalidAddr
+		}
+	case domainName:
+		size = uint8(len(r.addr))
+		if err = binary.Write(w, binary.BigEndian, size); err != nil {
+			return
+		}
+		n++
+	default:
+		return n, errInvalidAddr
 	}
-	n += 1
 
-	if _, err = w.Write(r.addr); err != nil {
+	if _, err = w.Write(r.addr[:size]); err != nil {
 		return
 	}
 	n += int64(len(r.addr))

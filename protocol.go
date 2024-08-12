@@ -272,11 +272,11 @@ func link(dst, src io.ReadWriteCloser) {
 		})
 	}
 
-	defer stop()
-
 	go func() {
+		defer stop()
 		io.Copy(dst, src)
 	}()
 
+	defer stop()
 	io.Copy(src, dst)
 }
