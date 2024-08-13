@@ -313,3 +313,77 @@ func (l loginReply) WriteTo(w io.Writer) (n int64, err error) {
 
 	return
 }
+
+// gssapiMessage server/client message
+type gssapiMessage struct {
+	version     uint8 // MUST BE 1
+	messageType uint8
+	token       []byte
+}
+
+func (m *gssapiMessage) WriteTo(w io.Writer) (n int64, err error) {
+	if err = binary.Write(w, binary.BigEndian, subnVersion); err != nil {
+		return
+	}
+	n++
+
+	if err = binary.Write(w, binary.BigEndian, m.messageType); err != nil {
+		return
+	}
+	n++
+
+	if len(m.token) > gssMaxTokenSize {
+		return n, fmt.Errorf("to big token size: %d", len(m.token))
+	}
+
+	if err = binary.Write(w, binary.BigEndian, uint16(len(m.token))); err != nil {
+		return
+	}
+	n += 2
+
+	nn, err := w.Write(m.token)
+
+	return n + int64(nn), err
+}
+
+func (m *gssapiMessage) ReadFrom(reader io.Reader) (n int64, err error) {
+	if err = binary.Read(reader, binary.BigEndian, &m.version); err != nil {
+		return
+	}
+	n++
+
+	if err = binary.Read(reader, binary.BigEndian, &m.messageType); err != nil {
+		return
+	}
+	n++
+
+	var size uint16
+	if err = binary.Read(reader, binary.BigEndian, &size); err != nil {
+		return
+	}
+	n += 2
+
+	m.token = make([]byte, size)
+	if _, err = io.ReadFull(reader, m.token); err != nil {
+		return
+	}
+	n += int64(size)
+
+	return
+}
+
+func (m *gssapiMessage) validate(messageType uint8) error {
+	if m.version != subnVersion {
+		return fmt.Errorf("invalid subnegotion version: %d", m.version)
+	}
+
+	if len(m.token) > gssMaxTokenSize {
+		return fmt.Errorf("too big token size: %d", len(m.token))
+	}
+
+	if m.messageType != messageType {
+		return fmt.Errorf("invalid gssapi subnegation message type: %d", m.messageType)
+	}
+
+	return nil
+}

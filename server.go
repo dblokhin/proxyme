@@ -35,7 +35,7 @@ type GSSAPI interface {
 	// client's request.
 	AcceptContext(token []byte) (complete bool, outputToken []byte, err error)
 
-	// AcceptProtectionLevel
+	// AcceptProtectionLevel adjusts protection level.
 	// The default value of quality of protection shall be specified, and
 	// the use of conf_req_flag shall be as determined by the previous
 	// subnegotiation step.  If protection level 1 is agreed then
@@ -45,12 +45,15 @@ type GSSAPI interface {
 	// and server using local configuration.
 	//
 	// The security context protection level sent by client and server must
-	// be one of the following values:
+	// be one of the following values (byte):
 	//         1 required per-message integrity
 	//         2 required per-message integrity and confidentiality
 	//         3 selective per-message integrity or confidentiality based on
 	//           local client and server configurations
-	AcceptProtectionLevel(lvl int) (int, error)
+	//
+	// Also lvl can be 0 meaning no protection. Returns security
+	//   context protection level which it agrees to.
+	AcceptProtectionLevel(lvl byte) (byte, error)
 
 	// The token is produced by encapsulating an octet containing the
 	// required protection level using gss_seal()/gss_wrap() with conf_req
@@ -62,7 +65,7 @@ type GSSAPI interface {
 	//
 
 	// Encode produces output token signing/encrypting the data based on protection level.
-	Encode(level int, data []byte) (output []byte, err error)
+	Encode(data []byte) (output []byte, err error)
 
 	// Decode verifies/decrypts token and returns payload.
 	Decode(token []byte) (data []byte, err error)

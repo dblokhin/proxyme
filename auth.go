@@ -68,15 +68,110 @@ func (l usernameAuth) auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) 
 	return conn, err
 }
 
-//type gssapiAuth struct {
-//}
-//
-//func (g gssapiAuth) method() authMethod {
-//	//TODO implement me
-//	panic("implement me")
-//}
-//
-//func (g gssapiAuth) auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) {
-//	//TODO implement me
-//	panic("implement me")
-//}
+const (
+	gssMaxTokenSize = 1<<16 - 1
+
+	// gssapi message types
+	gssAuthenticateMessage   uint8 = 1
+	gssProtectionNegotiation uint8 = 2
+)
+
+type gssapiAuth struct {
+	gssapi GSSAPI
+	conn   io.ReadWriteCloser
+}
+
+func (g *gssapiAuth) method() authMethod {
+	return typeGSSAPI
+}
+
+func (g *gssapiAuth) auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) {
+	var msg gssapiMessage
+
+	// authenticate stage
+	for {
+		// If gss_accept_sec_context is not completed, the server
+		// should return the generated output_token to the client, and
+		// subsequently pass the resulting client supplied token to another call
+		// to gss_accept_sec_context.
+
+		// 1. receive client initial token
+		if _, err := msg.ReadFrom(conn); err != nil {
+			return conn, fmt.Errorf("sock read: %w", err)
+		}
+
+		if err := msg.validate(gssAuthenticateMessage); err != nil {
+			return conn, err
+		}
+
+		// 2. gss accept context
+		complete, token, err := g.gssapi.AcceptContext(msg.token)
+		if err != nil {
+			// refuse the client's connection for any reason (GSS-API
+			// authentication failure or otherwise)
+			refuseMsg := []uint8{1, 0xff}
+			conn.Write(refuseMsg) // nolint
+
+			return conn, fmt.Errorf("accept client context: %w", err)
+		}
+
+		// 3. reply
+		msg.token = token
+		if _, err := msg.WriteTo(conn); err != nil {
+			return conn, fmt.Errorf("sock write: %w", err)
+		}
+
+		// If gss_accept_sec_context returns GSS_S_COMPLETE, then, if an
+		// output_token is returned, the server should return it to the client.
+		//
+		// If no token is returned, a zero length token should be sent by the
+		// server to signal to the client that it is ready to receive the
+		// client's request.
+		if complete || len(msg.token) == 0 {
+			break
+		}
+	}
+
+	// agreement message protection stage
+	// 1. receive client request
+	if _, err := msg.ReadFrom(conn); err != nil {
+		return conn, fmt.Errorf("sock read: %w", err)
+	}
+
+	if err := msg.validate(gssProtectionNegotiation); err != nil {
+		return conn, err
+	}
+
+	// 2. get payload
+	data, err := g.gssapi.Decode(msg.token)
+	if err != nil {
+		return conn, err
+	}
+
+	if len(data) != 1 {
+		return conn, fmt.Errorf("client send invalid protection level")
+	}
+
+	// 3. adjust protection lvl and takes security
+	// context protection level which it agrees to
+	lvl, err := g.gssapi.AcceptProtectionLevel(data[0])
+	if err != nil {
+		return conn, err
+	}
+
+	// 4. encode result
+	token, err := g.gssapi.Encode([]byte{lvl})
+	if err != nil {
+		return conn, err
+	}
+
+	// 5. reply
+	msg.token = token
+	if _, err := msg.WriteTo(conn); err != nil {
+		return conn, fmt.Errorf("sock write: %w", err)
+	}
+
+	// traffic stage
+
+	return nil, nil
+}
