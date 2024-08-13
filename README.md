@@ -14,8 +14,8 @@ Feedback and contributions are greatly appreciated!
 - **BIND command**: Allows incoming connections on a specified IP and port.
 - **AUTH support**:
     - No authentication (anonymous access)
-    - Username/Password authentication
-- plan: GSSAPI method auth
+    - Username/Password authentication 
+    - GSSAPI SOCKS5 protocol flow (rfc1961)
 
 ## Getting Started
 ### Source usage
