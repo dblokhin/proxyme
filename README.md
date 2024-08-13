@@ -14,8 +14,8 @@ Feedback and contributions are greatly appreciated!
 - **BIND command**: Allows incoming connections on a specified IP and port.
 - **AUTH support**:
     - No authentication (anonymous access)
-    - Username/Password authentication
-- plan: GSSAPI method auth
+    - Username/Password authentication 
+    - GSSAPI SOCKS5 protocol flow (rfc1961)
 
 ## Getting Started
 ### Source usage
@@ -76,6 +76,9 @@ You can also run the socks5 proxy within a Docker container.
    ```
 
    Replace `--auth user:password` with your desired username and password. Omit this flag for anonymous access.
+   ```bash
+   curl --socks5 localhost:1080 -U user:password https://google.com
+   ```
 
 ## Contributing
 We welcome contributions to enhance the functionality and performance of this Socks5 proxy. If you find any bugs or have feature requests, feel free to open an issue or submit a pull request.
