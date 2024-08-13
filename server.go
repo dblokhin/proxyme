@@ -84,8 +84,10 @@ type Options struct {
 	// Checks user credentials, non nil error causes DENIED status for client.
 	Authenticate func(username, password []byte) error
 
-	// TODO: GSSAPI
-	GSSAPI func() GSSAPI
+	// GSSAPI enables GSS-API authentication method.
+	// This func is called whenever new GSSAPI client connects to get an object
+	// implementing GSSAPI interface.
+	GSSAPI func() (GSSAPI, error)
 
 	// Connect establishes tcp sock connection to remote server, addr is host:port string.
 	// If not specified, default dialer will be used that just net.Dial to remote server.
@@ -105,11 +107,19 @@ func New(opts Options) (Server, error) {
 	authMethods := make(map[authMethod]authHandler)
 	if opts.AllowNoAuth {
 		// enable no auth method
-		authMethods[typeNoAuth] = noAuth{}
+		authMethods[typeNoAuth] = &noAuth{}
 	}
 	if opts.Authenticate != nil {
 		// enable username/password method
-		authMethods[typeLogin] = usernameAuth{opts.Authenticate}
+		authMethods[typeLogin] = &usernameAuth{
+			authenticator: opts.Authenticate,
+		}
+	}
+	if opts.GSSAPI != nil {
+		// enable gssapi interface
+		authMethods[typeLogin] = &gssapiAuth{
+			gssapi: opts.GSSAPI,
+		}
 	}
 
 	// set up connect fn for creating tunnel to remote server

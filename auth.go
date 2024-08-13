@@ -1,6 +1,7 @@
 package proxyme
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 )
@@ -24,11 +25,11 @@ type authHandler interface {
 
 type noAuth struct{}
 
-func (n noAuth) method() authMethod {
+func (n *noAuth) method() authMethod {
 	return typeNoAuth
 }
 
-func (n noAuth) auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) {
+func (n *noAuth) auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) {
 	// no auth just returns conn itself
 	return conn, nil
 }
@@ -37,11 +38,11 @@ type usernameAuth struct {
 	authenticator func(user, pass []byte) error
 }
 
-func (l usernameAuth) method() authMethod {
+func (l *usernameAuth) method() authMethod {
 	return typeLogin
 }
 
-func (l usernameAuth) auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) {
+func (l *usernameAuth) auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) {
 	var req loginRequest
 	if _, err := req.ReadFrom(conn); err != nil {
 		return conn, fmt.Errorf("sock read: %w", err)
@@ -69,23 +70,31 @@ func (l usernameAuth) auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) 
 }
 
 const (
-	gssMaxTokenSize = 1<<16 - 1
+	gssMaxTokenSize   = 1<<16 - 1
+	gssMaxMessageSize = 1<<16 + 2
 
 	// gssapi message types
-	gssAuthenticateMessage   uint8 = 1
-	gssProtectionNegotiation uint8 = 2
+	gssAuthentication uint8 = 1
+	gssProtection     uint8 = 2
+	gssEncapsulation  uint8 = 3
 )
 
 type gssapiAuth struct {
-	gssapi GSSAPI
-	conn   io.ReadWriteCloser
+	gssapi func() (GSSAPI, error)
 }
 
 func (g *gssapiAuth) method() authMethod {
 	return typeGSSAPI
 }
 
+// auth authenticates and returns encapsulated conn.
+// encapsulated conn MUST be non nil.
 func (g *gssapiAuth) auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) {
+	gssapi, err := g.gssapi()
+	if err != nil {
+		return conn, err
+	}
+
 	var msg gssapiMessage
 
 	// authenticate stage
@@ -100,12 +109,12 @@ func (g *gssapiAuth) auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) {
 			return conn, fmt.Errorf("sock read: %w", err)
 		}
 
-		if err := msg.validate(gssAuthenticateMessage); err != nil {
+		if err := msg.validate(gssAuthentication); err != nil {
 			return conn, err
 		}
 
 		// 2. gss accept context
-		complete, token, err := g.gssapi.AcceptContext(msg.token)
+		complete, token, err := gssapi.AcceptContext(msg.token)
 		if err != nil {
 			// refuse the client's connection for any reason (GSS-API
 			// authentication failure or otherwise)
@@ -138,12 +147,12 @@ func (g *gssapiAuth) auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) {
 		return conn, fmt.Errorf("sock read: %w", err)
 	}
 
-	if err := msg.validate(gssProtectionNegotiation); err != nil {
+	if err := msg.validate(gssProtection); err != nil {
 		return conn, err
 	}
 
 	// 2. get payload
-	data, err := g.gssapi.Decode(msg.token)
+	data, err := gssapi.Decode(msg.token)
 	if err != nil {
 		return conn, err
 	}
@@ -154,13 +163,13 @@ func (g *gssapiAuth) auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) {
 
 	// 3. adjust protection lvl and takes security
 	// context protection level which it agrees to
-	lvl, err := g.gssapi.AcceptProtectionLevel(data[0])
+	lvl, err := gssapi.AcceptProtectionLevel(data[0])
 	if err != nil {
 		return conn, err
 	}
 
 	// 4. encode result
-	token, err := g.gssapi.Encode([]byte{lvl})
+	token, err := gssapi.Encode([]byte{lvl})
 	if err != nil {
 		return conn, err
 	}
@@ -171,7 +180,61 @@ func (g *gssapiAuth) auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) {
 		return conn, fmt.Errorf("sock write: %w", err)
 	}
 
-	// traffic stage
+	// make encapsulated conn
+	return gssConn{
+		raw:    conn,
+		gssapi: gssapi,
+		buffer: bytes.Buffer{},
+	}, nil
+}
 
-	return nil, nil
+// gssConn is encapsulated GSSAPI connection.
+type gssConn struct {
+	raw    io.ReadWriteCloser
+	gssapi GSSAPI
+	buffer bytes.Buffer
+}
+
+func (g gssConn) Read(p []byte) (int, error) {
+	// from raw conn -> gssapi decode -> encapsulated conn
+	var msg gssapiMessage
+
+	if g.buffer.Len() > 0 {
+		return g.buffer.Read(p)
+	}
+
+	_, err := msg.ReadFrom(g.raw)
+	if err != nil {
+		return 0, err
+	}
+
+	payload, err := g.gssapi.Decode(msg.token)
+	if err != nil {
+		return 0, err
+	}
+
+	n := min(len(p), len(payload))
+	copy(p, payload)
+
+	if n < len(payload) {
+		if _, err := g.buffer.Write(payload[n:]); err != nil {
+			return n, err
+		}
+	}
+
+	return n, nil
+}
+
+func (g gssConn) Write(p []byte) (n int, err error) {
+	// from encapsulated conn -> gssapi encode -> raw conn
+	token, err := g.gssapi.Encode(p)
+	if err != nil {
+		return 0, err
+	}
+
+	return g.raw.Write(token)
+}
+
+func (g gssConn) Close() error {
+	return g.raw.Close()
 }
