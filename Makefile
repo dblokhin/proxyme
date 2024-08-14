@@ -8,7 +8,7 @@ GOLANGCI_LINT_VERSION := v1.59.1
 BIN_DIR := $(shell go env GOPATH)/bin
 
 build:
-	$(GOBUILD) -o $(BINARY_NAME) -v
+	$(GOBUILD) -o $(BINARY_NAME) ./cmd/main.go
 
 run:
 	$(GO) run ./cmd/main.go
@@ -34,6 +34,6 @@ docker-build:
 	docker build -t $(BINARY_NAME) .
 
 docker-run:
-	docker run --rm -it -p 1080:1080 $(BINARY_NAME)
+	docker run --rm -it -p 1080:1080 -e PROXY_NOAUTH=yes $(BINARY_NAME)
 
 .PHONY: build clean test run fmt lint deps docker-build docker-run

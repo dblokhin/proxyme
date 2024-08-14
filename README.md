@@ -8,7 +8,9 @@ This project is currently **active** and maintained. We aim to continually impro
 Feedback and contributions are greatly appreciated!
 
 ## Features
-- Small, easy to learn Golang codebase;
+This project fully implements all the requirements outlined in the specifications of RFC 1928, RFC 1929, and RFC 1961,
+with the exception of the UDP ASSOCIATE command, which may be implemented in the future.
+
 - **CONNECT command**: Standard command for connecting to a destination server.
 - **Custom CONNECT**: Allows creating customs tunnels to destination server.
 - **BIND command**: Allows incoming connections on a specified IP and port.
@@ -18,7 +20,7 @@ Feedback and contributions are greatly appreciated!
     - GSSAPI SOCKS5 protocol flow (rfc1961)
 
 ## Getting Started
-### Source usage
+### Golang package usage
 ```go
 func main() {
     opts := proxyme.Options{
@@ -37,6 +39,18 @@ func main() {
 }
 ```
 
+### Binary Usage
+#### Environment Variables
+The project supports the following environment variables to configure the proxy server:
+
+- `PROXY_HOST`: The host IP or hostname the proxy will listen on. (Default: 0.0.0.0)
+- `PROXY_PORT`: The port number the proxy will listen on. (Default: 1080)
+- `PROXY_BIND_IP`: The IP address to use for BIND operations in the SOCKS5 protocol. This should be a public IP address that can accept incoming connections.
+- `PROXY_NOAUTH`: If set to yes, true, or 1, allows unauthenticated access to the proxy. (Default: disabled)
+- `PROXY_USERS`: A comma-separated list of username and password pairs for authentication (in the format user:pass,user2:pass2). If this is set, the proxy will require username/password authentication.
+
+At least one auth method (noauth or username/password) should be specified.
+
 ### Binary installation
 
 1. **Clone the repository:**
@@ -47,14 +61,12 @@ func main() {
 
 2. **Build the binary:**
    ```bash
-   # just go build -o proxyme
    make build
    ```
 
 3. **Run the proxy:**
    ```bash
-   ./proxyme --usage # show command line options
-   ./proxyme --port 1080 --noauth # run without authentication
+   PROXY_PORT=1080 PROXY_NOAUTH=yes ./proxyme # starts proxy on 0.0.0.0
    ```
 
 4. **Check the proxy:**
@@ -72,12 +84,18 @@ You can also run the socks5 proxy within a Docker container.
 
 2. **Run the Docker container:**
    ```bash
-   docker run -d -p 1080:1080 proxyme --auth user:password
+   docker run -d \
+    -e PROXY_HOST=0.0.0.0 \
+    -e PROXY_PORT=1080 \
+    -e PROXY_BIND_IP=203.0.113.4 \
+    -e PROXY_NOAUTH=yes \
+    -e PROXY_USERS="user1:pass1,user2:pass2" \
+    -p 1080:1080 \
+    proxyme
    ```
 
-   Replace `--auth user:password` with your desired username and password. Omit this flag for anonymous access.
    ```bash
-   curl --socks5 localhost:1080 -U user:password https://google.com
+   curl --socks5 localhost:1080 -U user1:pass1 https://google.com
    ```
 
 ## Contributing

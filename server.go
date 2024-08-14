@@ -6,7 +6,6 @@ import (
 	"io"
 	"log"
 	"net"
-	"net/netip"
 	"sync"
 	"time"
 )
@@ -62,7 +61,6 @@ type GSSAPI interface {
 	// For TCP and UDP clients and servers, the GSS-API functions for
 	// encapsulation and de-encapsulation shall be used by implementations -
 	// i.e. gss_seal()/gss_wrap(), and gss_unseal()/ gss_unwrap().
-	//
 
 	// Encode produces output token signing/encrypting the data based on protection level.
 	Encode(data []byte) (output []byte, err error)
@@ -72,10 +70,10 @@ type GSSAPI interface {
 }
 
 type Options struct {
-	// BindIP is public server interface (IP v4/v6) for protocol BIND operation (incoming traffic
-	// from outside to client sock).
-	// If not specified the socks5 BIND operation will be disabled.
-	BindIP string
+	// BindIP is public server interface (IP v4/v6) for protocol BIND operation:
+	// incoming traffic from outside to client sock.
+	// If not specified (nil) the socks5 BIND operation will be disabled.
+	BindIP net.IP
 
 	// AllowNoAuth enables "NO AUTHENTICATION REQUIRED" authentication method
 	AllowNoAuth bool
@@ -122,6 +120,10 @@ func New(opts Options) (Server, error) {
 		}
 	}
 
+	if len(authMethods) == 0 {
+		return Server{}, errors.New("none of socks5 auth method are specified")
+	}
+
 	// set up connect fn for creating tunnel to remote server
 	connectFn := defaultConnect
 	if opts.Connect != nil {
@@ -129,21 +131,10 @@ func New(opts Options) (Server, error) {
 		connectFn = opts.Connect
 	}
 
-	// set up BIND operation setting
-	var bindIP []byte
-	if len(opts.BindIP) > 0 {
-		addr, err := netip.ParseAddr(opts.BindIP)
-		if err != nil {
-			return Server{}, err
-		}
-
-		bindIP = addr.AsSlice()
-	}
-
 	return Server{
 		protocol: socks5{
 			authMethods: authMethods,
-			bindIP:      bindIP,
+			bindIP:      opts.BindIP,
 			connect:     connectFn,
 		},
 		done: make(chan any),
