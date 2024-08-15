@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"net"
 	"os"
 	"os/signal"
@@ -17,6 +18,8 @@ import (
 	"sync"
 	"syscall"
 )
+
+import _ "net/http/pprof"
 
 const (
 	maxUsersTotal = 1024 // limit the number of pairs user/password
@@ -46,7 +49,7 @@ func main() {
 	}
 
 	// graceful shutdown
-	sig := make(chan os.Signal)
+	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
 	go func() {
 		<-sig
@@ -146,6 +149,7 @@ func getOpts() (proxyme.Options, error) {
 		Authenticate: authenticate,
 		//GSSAPI:       nil,
 		//Connect:      nil,
+		Log: slog.Default(),
 	}
 
 	return opts, nil

@@ -1,6 +1,7 @@
 package proxyme
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log/slog"
@@ -61,10 +62,11 @@ type state func(*client) (state, error)
 
 // socks5 implements socks5 protocol
 type socks5 struct {
-	authMethods map[authMethod]authHandler
-	bindIP      net.IP // external address for BIND command
-	connect     func(addr string) (io.ReadWriteCloser, error)
-	log         *slog.Logger
+	authMethods   map[authMethod]authHandler
+	bindIP        net.IP // external address for BIND command
+	connect       func(ctx context.Context, addr string) (io.ReadWriteCloser, error)
+	resolveDomain func(ctx context.Context, domain []byte) (net.IP, error)
+	log           *slog.Logger
 }
 
 // initState starts protocol negotiation
@@ -158,7 +160,22 @@ func (s socks5) newCommandState(c *client) (state, error) {
 
 func (s socks5) connectState(msg commandRequest) state {
 	return func(c *client) (state, error) {
-		conn, err := s.connect(msg.canonicalAddr())
+		ctx := context.TODO() // todo: limited dns resolve + connect
+		// make connect addr
+		var addr string
+
+		if msg.addressType == domainName {
+			ip, err := s.resolveDomain(ctx, msg.addr)
+			if err != nil {
+				return s.commandErrorState(msg, hostUnreachable), fmt.Errorf("resolve domain: %w", err)
+			}
+			addr = fmt.Sprintf("%s:%d", ip, msg.port)
+		} else {
+			addr = fmt.Sprintf("%s:%d", net.IP(msg.addr), msg.port)
+		}
+
+		// connect
+		conn, err := s.connect(ctx, addr)
 		if err != nil {
 			return s.commandErrorState(msg, hostUnreachable), fmt.Errorf("dial: %w", err)
 		}
@@ -243,8 +260,19 @@ func (s socks5) bindState(msg commandRequest) state {
 	}
 }
 
-func defaultConnect(addr string) (io.ReadWriteCloser, error) {
-	return net.Dial("tcp", addr)
+func defaultConnect(ctx context.Context, addr string) (io.ReadWriteCloser, error) {
+	var d net.Dialer
+
+	return d.DialContext(ctx, "tcp", addr)
+}
+
+func defaultDomainResolver(ctx context.Context, domain []byte) (net.IP, error) {
+	ips, err := defaultResolver.LookupIP(ctx, "ip", string(domain))
+	if err != nil {
+		return net.IP{}, err
+	}
+
+	return ips[0], nil
 }
 
 // nolint

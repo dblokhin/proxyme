@@ -1,6 +1,7 @@
 package proxyme
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -95,7 +96,7 @@ type Options struct {
 	// If not specified, default dialer will be used that just net.Dial to remote server.
 	// Use specific Connect to create custom tunnels to remote server.
 	// OPTIONAL, default net.Dial
-	Connect func(addr string) (io.ReadWriteCloser, error)
+	Connect func(ctx context.Context, addr string) (io.ReadWriteCloser, error)
 
 	// Logger for
 	// OPTIONAL, default discarded
@@ -149,10 +150,11 @@ func New(opts Options) (Server, error) {
 
 	return Server{
 		protocol: socks5{
-			authMethods: authMethods,
-			bindIP:      opts.BindIP,
-			connect:     connectFn,
-			log:         logger,
+			authMethods:   authMethods,
+			bindIP:        opts.BindIP,
+			connect:       connectFn,
+			resolveDomain: defaultDomainResolver,
+			log:           logger,
 		},
 		done: make(chan any),
 		once: new(sync.Once),

@@ -131,19 +131,6 @@ func (c *commandRequest) ReadFrom(r io.Reader) (n int64, err error) {
 	return
 }
 
-// canonicalAddr string that accept net.Dial(): [host]:[port]
-func (c *commandRequest) canonicalAddr() string {
-	if c.validate() != nil {
-		return ""
-	}
-
-	if c.addressType == domainName {
-		return fmt.Sprintf("%s:%d", c.addr, c.port)
-	}
-
-	return fmt.Sprintf("%s:%d", net.IP(c.addr).String(), c.port)
-}
-
 func (c *commandRequest) validate() error {
 	if c.version != protoVersion {
 		return fmt.Errorf("invalid command.version: %d", c.version)
