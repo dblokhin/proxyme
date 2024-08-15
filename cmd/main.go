@@ -58,6 +58,7 @@ func main() {
 	// start socks5 proxy
 	addr := fmt.Sprintf("%s:%d", os.Getenv(envHost), port)
 	log.Println("starting on", addr)
+
 	if err := srv.ListenAndServe("tcp", addr); err != nil {
 		log.Println(err)
 	}

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"sync"
 	"time"
@@ -73,30 +73,40 @@ type Options struct {
 	// BindIP is public server interface (IP v4/v6) for protocol BIND operation:
 	// incoming traffic from outside to client sock.
 	// If not specified (nil) the socks5 BIND operation will be disabled.
+	// OPTIONAL
 	BindIP net.IP
 
 	// AllowNoAuth enables "NO AUTHENTICATION REQUIRED" authentication method
+	// OPTIONAL, default disabled
 	AllowNoAuth bool
 
 	// Authenticate enables USERNAME/PASSWORD authentication method.
 	// Checks user credentials, non nil error causes DENIED status for client.
+	// OPTIONAL, default disabled
 	Authenticate func(username, password []byte) error
 
 	// GSSAPI enables GSS-API authentication method.
 	// This func is called whenever new GSSAPI client connects to get an object
 	// implementing GSSAPI interface.
+	// OPTIONAL, default disabled
 	GSSAPI func() (GSSAPI, error)
 
 	// Connect establishes tcp sock connection to remote server, addr is host:port string.
 	// If not specified, default dialer will be used that just net.Dial to remote server.
 	// Use specific Connect to create custom tunnels to remote server.
+	// OPTIONAL, default net.Dial
 	Connect func(addr string) (io.ReadWriteCloser, error)
+
+	// Logger for
+	// OPTIONAL, default discarded
+	Log *slog.Logger
 }
 
 type Server struct {
 	protocol socks5
 	done     chan any
 	once     *sync.Once
+	log      *slog.Logger
 }
 
 // New returns new socks5 proxyme server
@@ -131,14 +141,22 @@ func New(opts Options) (Server, error) {
 		connectFn = opts.Connect
 	}
 
+	// enable logger if set
+	logger := opts.Log
+	if logger == nil {
+		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
+
 	return Server{
 		protocol: socks5{
 			authMethods: authMethods,
 			bindIP:      opts.BindIP,
 			connect:     connectFn,
+			log:         logger,
 		},
 		done: make(chan any),
 		once: new(sync.Once),
+		log:  logger,
 	}, nil
 }
 
@@ -171,17 +189,23 @@ func (s Server) ListenAndServe(network, addr string) error {
 	}
 }
 
+// handle handles new client connection, starts socks5 protocol negation
 func (s Server) handle(conn net.Conn) {
-	defer conn.Close()
+	client := newClient(conn)
+	defer client.close()
 
-	client := NewClient(conn)
-	state := s.protocol.initState(client)
-	for state != nil {
-		state = state(client)
-	}
+	log := s.log.With(
+		"network", conn.LocalAddr().Network(),
+		"local address", conn.LocalAddr(),
+		"remote address", conn.RemoteAddr(),
+	)
 
-	if err := client.LastError(); err != nil {
-		log.Println(err)
+	for state, err := s.protocol.initState(client); state != nil; {
+		if err != nil {
+			log.Error(err.Error())
+		}
+
+		state, err = state(client)
 	}
 }
 

@@ -3,6 +3,7 @@ package proxyme
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"sync"
 )
@@ -56,119 +57,110 @@ const (
 	addressNotSupported commandStatus = 8 // Address type not supported
 )
 
-type state func(*client) state
+type state func(*client) (state, error)
 
 // socks5 implements socks5 protocol
 type socks5 struct {
 	authMethods map[authMethod]authHandler
 	bindIP      net.IP // external address for BIND command
 	connect     func(addr string) (io.ReadWriteCloser, error)
+	log         *slog.Logger
 }
 
 // initState starts protocol negotiation
-func (s socks5) initState(c *client) state {
+func (s socks5) initState(c *client) (state, error) {
 	var msg authRequest
 
 	if _, err := msg.ReadFrom(c.rdr); err != nil {
-		c.err = fmt.Errorf("sock read: %w", err)
-		return nil
+		return nil, fmt.Errorf("sock read: %w", err)
 	}
 
 	if err := msg.validate(); err != nil {
-		c.err = err
-		return nil
+		return nil, err
 	}
 
-	return s.chooseAuthState(msg)
+	return s.chooseAuthState(msg), nil
 }
 
 func (s socks5) chooseAuthState(msg authRequest) state {
-	return func(c *client) state {
+	return func(c *client) (state, error) {
 		for _, code := range msg.methods {
 			if method, ok := s.authMethods[code]; ok {
-				return s.authState(method)
+				return s.authState(method), nil
 			}
 		}
 
-		return s.errAuthState(msg)
+		return s.errAuthState(msg), nil
 	}
 }
 
 func (s socks5) errAuthState(msg authRequest) state {
-	return func(c *client) state {
+	return func(c *client) (state, error) {
 		reply := authReply{method: typeError}
 
-		if err := c.WriteMessage(reply); err != nil {
-			c.err = fmt.Errorf("sock write: %w", err)
-			return nil
+		if err := c.writeMessage(reply); err != nil {
+			return nil, fmt.Errorf("sock write: %w", err)
 		}
 
-		c.err = fmt.Errorf("unsupported auth methods: %v", msg.methods)
-
-		return nil // stop
+		// stop
+		return nil, fmt.Errorf("unsupported auth methods: %v", msg.methods)
 	}
 }
 
 func (s socks5) authState(method authHandler) state {
-	return func(c *client) state {
+	return func(c *client) (state, error) {
 		// send chosen auth method
 		reply := authReply{method: method.method()}
 
-		if err := c.WriteMessage(reply); err != nil {
-			c.err = fmt.Errorf("sock write: %w", err)
-			return nil
+		if err := c.writeMessage(reply); err != nil {
+			return nil, fmt.Errorf("sock write: %w", err)
 		}
 
 		// do authentication
 		conn, err := method.auth(c.conn)
 		if err != nil {
-			c.err = fmt.Errorf("auth: %w", err)
-			return nil
+			return nil, fmt.Errorf("auth: %w", err)
 		}
 
-		c.Upgrade(conn)
+		c.upgrade(conn)
 
-		return s.newCommandState
+		return s.newCommandState, nil
 	}
 }
 
-func (s socks5) newCommandState(c *client) state {
+func (s socks5) newCommandState(c *client) (state, error) {
 	var msg commandRequest
 
 	if _, err := msg.ReadFrom(c.rdr); err != nil {
-		c.err = fmt.Errorf("sock read: %w", err)
-		return nil
+		return nil, fmt.Errorf("sock read: %w", err)
 	}
 
 	// validate fields
 	if err := msg.validate(); err != nil {
-		c.err = err
-		return nil
+		return nil, err
 	}
 
 	switch msg.commandType {
 	case connect:
-		return s.connectState(msg)
+		return s.connectState(msg), nil
 	case bind:
 		if len(s.bindIP) == 0 {
-			return s.commandErrorState(msg, notAllowed)
+			return s.commandErrorState(msg, notAllowed), nil
 		}
-		return s.bindState(msg)
+		return s.bindState(msg), nil
 	case udpAssoc:
-		return s.commandErrorState(msg, notSupported)
+		return s.commandErrorState(msg, notSupported), nil
 
 	default:
-		c.err = fmt.Errorf("unsupported commandMessage: %d", msg.commandType)
-		return s.commandErrorState(msg, notSupported)
+		return s.commandErrorState(msg, notSupported), fmt.Errorf("unsupported commandMessage: %d", msg.commandType)
 	}
 }
 
 func (s socks5) connectState(msg commandRequest) state {
-	return func(c *client) state {
+	return func(c *client) (state, error) {
 		conn, err := s.connect(msg.canonicalAddr())
 		if err != nil {
-			c.err = fmt.Errorf("dial: %w", err)
-			return s.commandErrorState(msg, hostUnreachable)
+			return s.commandErrorState(msg, hostUnreachable), fmt.Errorf("dial: %w", err)
 		}
 
 		reply := commandReply{
@@ -179,14 +171,13 @@ func (s socks5) connectState(msg commandRequest) state {
 			port:        msg.port,
 		}
 
-		if err := c.WriteMessage(reply); err != nil {
-			c.err = fmt.Errorf("sock write: %w", err)
-			return nil
+		if err := c.writeMessage(reply); err != nil {
+			return nil, fmt.Errorf("sock write: %w", err)
 		}
 
 		link(conn, c.conn)
 
-		return nil
+		return nil, nil
 	}
 }
 
@@ -199,22 +190,20 @@ func (s socks5) commandErrorState(msg commandRequest, status commandStatus) stat
 		port:        msg.port,
 	}
 
-	return func(c *client) state {
-		if err := c.WriteMessage(reply); err != nil {
-			c.err = fmt.Errorf("sock write: %w", err)
-			return nil
+	return func(c *client) (state, error) {
+		if err := c.writeMessage(reply); err != nil {
+			return nil, fmt.Errorf("sock write: %w", err)
 		}
 
-		return s.newCommandState
+		return s.newCommandState, nil
 	}
 }
 
 func (s socks5) bindState(msg commandRequest) state {
-	return func(c *client) state {
+	return func(c *client) (state, error) {
 		ls, err := net.Listen("tcp", fmt.Sprintf("%s:0", s.bindIP))
 		if err != nil {
-			c.err = fmt.Errorf("bind: %w", err)
-			return s.commandErrorState(msg, sockFailure)
+			return s.commandErrorState(msg, sockFailure), fmt.Errorf("bind: %w", err)
 		}
 
 		port := uint16(ls.Addr().(*net.TCPAddr).Port)
@@ -234,26 +223,23 @@ func (s socks5) bindState(msg commandRequest) state {
 		}
 
 		// send first reply
-		if err := c.WriteMessage(reply); err != nil {
-			c.err = fmt.Errorf("sock write: %w", err)
-			return nil
+		if err := c.writeMessage(reply); err != nil {
+			return nil, fmt.Errorf("sock write: %w", err)
 		}
 
 		conn, err := ls.Accept()
 		if err != nil {
-			c.err = fmt.Errorf("link accept: %w", err)
-			return s.commandErrorState(msg, sockFailure)
+			return s.commandErrorState(msg, sockFailure), fmt.Errorf("link accept: %w", err)
 		}
 
 		// send first reply (on connect)
-		if err := c.WriteMessage(reply); err != nil {
-			c.err = fmt.Errorf("sock write: %w", err)
-			return nil
+		if err := c.writeMessage(reply); err != nil {
+			return nil, fmt.Errorf("sock write: %w", err)
 		}
 
 		link(conn, c.conn.(net.Conn))
 
-		return nil
+		return nil, nil
 	}
 }
 
