@@ -18,6 +18,7 @@ with the exception of the UDP ASSOCIATE command, which may be implemented in the
     - No authentication (anonymous access)
     - Username/Password authentication 
     - GSSAPI SOCKS5 protocol flow (rfc1961)
+- Custom DNS resolving.
 
 ## Getting Started
 ### Golang package usage
@@ -39,17 +40,17 @@ func main() {
 }
 ```
 
-### Binary Usage
+### Binary Usage: socks5 server proxyme
 #### Environment Variables
 The project supports the following environment variables to configure the proxy server:
 
 - `PROXY_HOST`: The host IP or hostname the proxy will listen on. (Default: 0.0.0.0)
 - `PROXY_PORT`: The port number the proxy will listen on. (Default: 1080)
-- `PROXY_BIND_IP`: The IP address to use for BIND operations in the SOCKS5 protocol. This should be a public IP address that can accept incoming connections.
+- `PROXY_BIND_IP`: The IP address to use for BIND operations in the SOCKS5 protocol. This should be a public IP address that can accept incoming connections. (Default: disabled)
 - `PROXY_NOAUTH`: If set to yes, true, or 1, allows unauthenticated access to the proxy. (Default: disabled)
-- `PROXY_USERS`: A comma-separated list of username and password pairs for authentication (in the format user:pass,user2:pass2). If this is set, the proxy will require username/password authentication.
+- `PROXY_USERS`: A comma-separated list of username and password pairs for authentication (in the format user:pass,user2:pass2). If this is set, the proxy enables SOCKS5 username/password authentication.
 
-At least one auth method (noauth or username/password) should be specified.
+At least one SOCKS5 auth method (noauth or username/password) must be specified.
 
 ### Binary installation
 

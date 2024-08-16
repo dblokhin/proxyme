@@ -98,7 +98,9 @@ type Options struct {
 	// OPTIONAL, default net.Dial
 	Connect func(ctx context.Context, addr string) (io.ReadWriteCloser, error)
 
-	// Logger for
+	Resolver func(ctx context.Context, host []byte) (net.IP, error)
+
+	// Logger to log proxy errors
 	// OPTIONAL, default discarded
 	Log *slog.Logger
 }
@@ -142,6 +144,12 @@ func New(opts Options) (Server, error) {
 		connectFn = opts.Connect
 	}
 
+	// set up dns resolver
+	resolverFn := opts.Resolver
+	if resolverFn == nil {
+		resolverFn = defaultDomainResolver
+	}
+
 	// enable logger if set
 	logger := opts.Log
 	if logger == nil {
@@ -153,7 +161,7 @@ func New(opts Options) (Server, error) {
 			authMethods:   authMethods,
 			bindIP:        opts.BindIP,
 			connect:       connectFn,
-			resolveDomain: defaultDomainResolver,
+			resolveDomain: resolverFn,
 			log:           logger,
 		},
 		done: make(chan any),
