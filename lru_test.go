@@ -33,7 +33,7 @@ func FuzzLru_Add(f *testing.F) {
 		}
 
 		if len(cnt) != len(cache.list) {
-			t.Error("invalid size list list")
+			t.Error("invalid size node node")
 		}
 
 		for _, k := range queue {
@@ -95,7 +95,7 @@ func FuzzLru_GetAdd(f *testing.F) {
 		}
 
 		if len(cnt) != len(cache.list) {
-			t.Error("invalid size list list")
+			t.Error("invalid size node node")
 		}
 
 		for _, k := range queue {

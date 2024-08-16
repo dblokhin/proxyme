@@ -9,12 +9,12 @@ import (
 const maxCacheSize = 3000 // todo: parametrize
 
 var defaultResolver = resolver{
-	cache: newCache[string, []net.IP](maxCacheSize),
+	cache: newSyncCache[string, []net.IP](maxCacheSize),
 }
 
 type resolver struct {
 	net.Resolver
-	cache lru[string, []net.IP]
+	cache *syncLRU[string, []net.IP]
 }
 
 // LookupIP resolves domain name
