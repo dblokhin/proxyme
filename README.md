@@ -1,7 +1,7 @@
 # Proxyme SOCKS5 server
 This is an efficient and lightweight implementation of a Socks5 Proxy written in pure Go (Golang) without any
 dependencies. The proxy supports key features like CONNECT, BIND, and AUTH (both with and without username/password 
-authentication).
+authentication, and GSSAPI SOCKS5 authentication flow).
 
 ## Project Status
 This project is currently **active** and maintained. We aim to continually improve its performance and feature set. 
