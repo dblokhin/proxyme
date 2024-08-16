@@ -9,11 +9,15 @@ import (
 const maxCacheSize = 3000 // todo: parametrize
 
 var defaultResolver = resolver{
-	cache: newSyncCache[string, []net.IP](maxCacheSize),
+	resolver: net.DefaultResolver,
+	cache:    newSyncCache[string, []net.IP](maxCacheSize),
 }
 
 type resolver struct {
-	net.Resolver
+	resolver interface {
+		LookupIP(ctx context.Context, network, host string) ([]net.IP, error)
+	}
+
 	cache *syncLRU[string, []net.IP]
 }
 
@@ -24,7 +28,7 @@ func (r *resolver) LookupIP(ctx context.Context, network, host string) ([]net.IP
 		return ips, nil
 	}
 
-	ips, err := r.Resolver.LookupIP(ctx, network, host)
+	ips, err := r.resolver.LookupIP(ctx, network, host)
 	if err != nil {
 		return nil, err
 	}
