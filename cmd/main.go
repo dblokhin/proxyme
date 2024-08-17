@@ -11,12 +11,13 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"proxyme"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"syscall"
+
+	"github.com/dblokhin/proxyme"
 )
 
 import _ "net/http/pprof"
