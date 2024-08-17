@@ -1,4 +1,9 @@
 # Proxyme SOCKS5 server
+
+[![Go Report Card](https://goreportcard.com/badge/github.com/dblokhin/proxyme)](https://goreportcard.com/report/github.com/dblokhin/proxyme)
+![Docker Pulls](https://img.shields.io/docker/pulls/dblokhin/proxyme)
+![Docker Image Size](https://img.shields.io/docker/image-size/dblokhin/proxyme)
+
 This is an efficient and lightweight implementation of a Socks5 Proxy written in pure Go (Golang) without any
 dependencies. The proxy supports key features like CONNECT, BIND, and AUTH (both with and without username/password 
 authentication, and GSSAPI SOCKS5 authentication flow).
