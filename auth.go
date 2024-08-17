@@ -7,8 +7,8 @@ import (
 )
 
 // as defined http://www.ietf.org/rfc/rfc1928.txt
-
 // as defined http://www.ietf.org/rfc/rfc1929.txt
+
 type loginStatus uint8
 
 const (
@@ -70,8 +70,7 @@ func (l *usernameAuth) auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error)
 }
 
 const (
-	gssMaxTokenSize   = 1<<16 - 1
-	gssMaxMessageSize = 1<<16 + 2
+	gssMaxTokenSize = 1<<16 - 1
 
 	// gssapi message types
 	gssAuthentication uint8 = 1
@@ -205,6 +204,10 @@ func (g gssConn) Read(p []byte) (int, error) {
 
 	_, err := msg.ReadFrom(g.raw)
 	if err != nil {
+		return 0, err
+	}
+
+	if err := msg.validate(gssEncapsulation); err != nil {
 		return 0, err
 	}
 

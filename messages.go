@@ -275,7 +275,7 @@ func (r *loginRequest) validate() error {
 		return fmt.Errorf("empty username")
 	}
 
-	if len(r.username) == 0 {
+	if len(r.password) == 0 {
 		return fmt.Errorf("empty password")
 	}
 
