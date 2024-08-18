@@ -776,3 +776,199 @@ func Test_gssapiMessage_validate(t *testing.T) {
 		})
 	}
 }
+
+func Test_authReply_WriteTo(t *testing.T) {
+	//+----+--------+
+	//|VER | METHOD |
+	//+----+--------+
+	//| 1  |   1    |
+	//+----+--------+
+
+	type fields struct {
+		method authMethod
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		wantW   []byte
+		wantN   int64
+		wantErr bool
+	}{
+		{
+			name: "common write",
+			fields: fields{
+				method: typeGSSAPI,
+			},
+			wantW:   []byte{protoVersion, byte(typeGSSAPI)},
+			wantN:   2,
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := authReply{
+				method: tt.fields.method,
+			}
+			w := &bytes.Buffer{}
+			gotN, err := a.WriteTo(w)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("WriteTo() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if gotW := w.Bytes(); !bytes.Equal(gotW, tt.wantW) {
+				t.Errorf("WriteTo() gotW = %v, want %v", gotW, tt.wantW)
+			}
+			if gotN != tt.wantN {
+				t.Errorf("WriteTo() gotN = %v, want %v", gotN, tt.wantN)
+			}
+		})
+	}
+}
+
+func Test_commandReply_WriteTo(t *testing.T) {
+	// +----+-----+-------+------+----------+----------+
+	// |VER | REP |  RSV  | ATYP | BND.ADDR | BND.PORT |
+	// +----+-----+-------+------+----------+----------+
+	// | 1  |  1  | X'00' |  1   | Variable |    2     |
+	// +----+-----+-------+------+----------+----------+
+	port := byte(0x77)
+	ip4 := net.ParseIP("192.168.0.1").To4()
+	ip6 := ip4.To16()
+	domain := []byte("google")
+
+	type fields struct {
+		rep         commandStatus
+		rsv         uint8
+		addressType addressType
+		addr        []byte
+		port        uint16
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		wantW   []byte
+		wantN   int64
+		wantErr bool
+	}{
+		{
+			name: "common ipv4",
+			fields: fields{
+				rep:         succeeded,
+				rsv:         0,
+				addressType: ipv4,
+				addr:        ip4,
+				port:        uint16(port),
+			},
+			wantW:   []byte{protoVersion, byte(succeeded), 0x00, byte(ipv4), ip4[0], ip4[1], ip4[2], ip4[3], 0x00, port},
+			wantN:   int64(len([]byte{protoVersion, byte(succeeded), 0x00, 0x01, ip4[0], ip4[1], ip4[2], ip4[3], 0x00, port})),
+			wantErr: false,
+		},
+		{
+			name: "common ipv6",
+			fields: fields{
+				rep:         notSupported,
+				rsv:         0,
+				addressType: ipv6,
+				addr:        ip6,
+				port:        uint16(port),
+			},
+			wantW: []byte{protoVersion, byte(notSupported), 0x00, byte(ipv6), ip6[0], ip6[1], ip6[2], ip6[3], ip6[4], ip6[5],
+				ip6[6], ip6[7], ip6[8], ip6[9], ip6[10], ip6[11], ip6[12], ip6[13], ip6[14], ip6[15], 0x00, port},
+			wantN: int64(len([]byte{protoVersion, byte(notSupported), 0x00, 0x04, ip6[0], ip6[1], ip6[2], ip6[3], ip6[4], ip6[5],
+				ip6[6], ip6[7], ip6[8], ip6[9], ip6[10], ip6[11], ip6[12], ip6[13], ip6[14], ip6[15], 0x00, port})),
+			wantErr: false,
+		},
+		{
+			name: "common domain",
+			fields: fields{
+				rep:         sockFailure,
+				rsv:         0,
+				addressType: domainName,
+				addr:        domain,
+				port:        uint16(port),
+			},
+			wantW: []byte{protoVersion, byte(sockFailure), 0x00, byte(domainName), byte(len(domain)), domain[0], domain[1],
+				domain[2], domain[3], domain[4], domain[5], 0x00, port},
+			wantN: int64(len([]byte{protoVersion, byte(sockFailure), 0x00, byte(domainName), byte(len(domain)), domain[0], domain[1],
+				domain[2], domain[3], domain[4], domain[5], 0x00, port})),
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := commandReply{
+				rep:         tt.fields.rep,
+				rsv:         tt.fields.rsv,
+				addressType: tt.fields.addressType,
+				addr:        tt.fields.addr,
+				port:        tt.fields.port,
+			}
+			w := &bytes.Buffer{}
+			gotN, err := r.WriteTo(w)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("WriteTo() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if gotW := w.Bytes(); !bytes.Equal(gotW, tt.wantW) {
+				t.Errorf("WriteTo() gotW = %v, want %v", gotW, tt.wantW)
+			}
+			if gotN != tt.wantN {
+				t.Errorf("WriteTo() gotN = %v, want %v", gotN, tt.wantN)
+			}
+		})
+	}
+}
+
+func Test_gssapiMessage_WriteTo(t *testing.T) {
+	// +------+------+------+.......................+
+	// + ver  | mtyp | len  |       token           |
+	// +------+------+------+.......................+
+	// + 0x01 | 0x01 | 0x02 | up to 2^16 - 1 octets |
+	// +------+------+------+.......................+
+	token := []byte{1, 2, 3, 4, 5, 6, 7, 9, 10} // for test len within a byte
+	type fields struct {
+		version     uint8
+		messageType uint8
+		token       []byte
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		wantW   []byte
+		wantN   int64
+		wantErr bool
+	}{
+		{
+			name: "common",
+			fields: fields{
+				version:     subnVersion,
+				messageType: gssAuthentication,
+				token:       token,
+			},
+			wantW:   append([]byte{subnVersion, gssAuthentication, 00, byte(len(token))}, token...),
+			wantN:   int64(len(token) + 4),
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &gssapiMessage{
+				version:     tt.fields.version,
+				messageType: tt.fields.messageType,
+				token:       tt.fields.token,
+			}
+			w := &bytes.Buffer{}
+			gotN, err := m.WriteTo(w)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("WriteTo() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if gotW := w.Bytes(); !bytes.Equal(gotW, tt.wantW) {
+				t.Errorf("WriteTo() gotW = %v, want %v", gotW, tt.wantW)
+			}
+			if gotN != tt.wantN {
+				t.Errorf("WriteTo() gotN = %v, want %v", gotN, tt.wantN)
+			}
+		})
+	}
+}
