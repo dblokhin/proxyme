@@ -201,21 +201,15 @@ func (s Server) ListenAndServe(network, addr string) error {
 
 // handle handles new client connection, starts socks5 protocol negation
 func (s Server) handle(conn net.Conn) {
-	client := newClient(conn)
-	defer client.close()
+	var client io.ReadWriteCloser = conn
+	client.Close() // nolint
 
-	log := s.log.With(
-		"network", conn.LocalAddr().Network(),
-		"local address", conn.LocalAddr(),
-		"remote address", conn.RemoteAddr(),
-	)
-
-	for state, err := s.protocol.initState(client); state != nil; {
+	for state, err := s.protocol.initState(&client); state != nil; {
 		if err != nil {
-			log.Error(err.Error())
+			s.log.Error(err.Error())
 		}
 
-		state, err = state(client)
+		state, err = state(&client)
 	}
 }
 

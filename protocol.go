@@ -58,7 +58,7 @@ const (
 	addressNotSupported commandStatus = 8 // Address type not supported
 )
 
-type state func(*client) (state, error)
+type state func(*io.ReadWriteCloser) (state, error)
 
 // socks5 implements socks5 protocol
 type socks5 struct {
@@ -70,10 +70,10 @@ type socks5 struct {
 }
 
 // initState starts protocol negotiation
-func (s socks5) initState(c *client) (state, error) {
+func (s socks5) initState(c *io.ReadWriteCloser) (state, error) {
 	var msg authRequest
 
-	if _, err := msg.ReadFrom(c.rdr); err != nil {
+	if _, err := msg.ReadFrom(*c); err != nil {
 		return nil, fmt.Errorf("sock read: %w", err)
 	}
 
@@ -85,7 +85,7 @@ func (s socks5) initState(c *client) (state, error) {
 }
 
 func (s socks5) chooseAuthState(msg authRequest) state {
-	return func(c *client) (state, error) {
+	return func(c *io.ReadWriteCloser) (state, error) {
 		for _, code := range msg.methods {
 			if method, ok := s.authMethods[code]; ok {
 				return s.authState(method), nil
@@ -97,10 +97,10 @@ func (s socks5) chooseAuthState(msg authRequest) state {
 }
 
 func (s socks5) errAuthState(msg authRequest) state {
-	return func(c *client) (state, error) {
+	return func(c *io.ReadWriteCloser) (state, error) {
 		reply := authReply{method: typeError}
 
-		if err := c.writeMessage(reply); err != nil {
+		if _, err := reply.WriteTo(*c); err != nil {
 			return nil, fmt.Errorf("sock write: %w", err)
 		}
 
@@ -110,30 +110,33 @@ func (s socks5) errAuthState(msg authRequest) state {
 }
 
 func (s socks5) authState(method authHandler) state {
-	return func(c *client) (state, error) {
+	return func(c *io.ReadWriteCloser) (state, error) {
 		// send chosen auth method
 		reply := authReply{method: method.method()}
 
-		if err := c.writeMessage(reply); err != nil {
+		if _, err := reply.WriteTo(*c); err != nil {
 			return nil, fmt.Errorf("sock write: %w", err)
 		}
 
 		// do authentication
-		conn, err := method.auth(c.conn)
+		conn, err := method.auth(*c)
 		if err != nil {
 			return nil, fmt.Errorf("auth: %w", err)
 		}
 
-		c.upgrade(conn)
+		// Hijacks client conn (reason: protocol flow might consider encapsulation).
+		// For example GSSAPI encapsulates the traffic intro gssapi protocol messages.
+		// Package user can encapsulate traffic into whatever he wants using Connect method.
+		*c = conn
 
 		return s.newCommandState, nil
 	}
 }
 
-func (s socks5) newCommandState(c *client) (state, error) {
+func (s socks5) newCommandState(c *io.ReadWriteCloser) (state, error) {
 	var msg commandRequest
 
-	if _, err := msg.ReadFrom(c.rdr); err != nil {
+	if _, err := msg.ReadFrom(*c); err != nil {
 		return nil, fmt.Errorf("sock read: %w", err)
 	}
 
@@ -159,7 +162,7 @@ func (s socks5) newCommandState(c *client) (state, error) {
 }
 
 func (s socks5) connectState(msg commandRequest) state {
-	return func(c *client) (state, error) {
+	return func(c *io.ReadWriteCloser) (state, error) {
 		ctx := context.TODO() // todo: limited dns resolve + connect
 		// make connect addr
 		var addr string
@@ -188,11 +191,11 @@ func (s socks5) connectState(msg commandRequest) state {
 			port:        msg.port,
 		}
 
-		if err := c.writeMessage(reply); err != nil {
+		if _, err := reply.WriteTo(*c); err != nil {
 			return nil, fmt.Errorf("sock write: %w", err)
 		}
 
-		link(conn, c.conn)
+		link(conn, *c)
 
 		return nil, nil
 	}
@@ -207,8 +210,8 @@ func (s socks5) commandErrorState(msg commandRequest, status commandStatus) stat
 		port:        msg.port,
 	}
 
-	return func(c *client) (state, error) {
-		if err := c.writeMessage(reply); err != nil {
+	return func(c *io.ReadWriteCloser) (state, error) {
+		if _, err := reply.WriteTo(*c); err != nil {
 			return nil, fmt.Errorf("sock write: %w", err)
 		}
 
@@ -217,7 +220,7 @@ func (s socks5) commandErrorState(msg commandRequest, status commandStatus) stat
 }
 
 func (s socks5) bindState(msg commandRequest) state {
-	return func(c *client) (state, error) {
+	return func(c *io.ReadWriteCloser) (state, error) {
 		ls, err := net.Listen("tcp", fmt.Sprintf("%s:0", s.bindIP))
 		if err != nil {
 			return s.commandErrorState(msg, sockFailure), fmt.Errorf("bind: %w", err)
@@ -240,7 +243,7 @@ func (s socks5) bindState(msg commandRequest) state {
 		}
 
 		// send first reply
-		if err := c.writeMessage(reply); err != nil {
+		if _, err := reply.WriteTo(*c); err != nil {
 			return nil, fmt.Errorf("sock write: %w", err)
 		}
 
@@ -250,11 +253,11 @@ func (s socks5) bindState(msg commandRequest) state {
 		}
 
 		// send first reply (on connect)
-		if err := c.writeMessage(reply); err != nil {
+		if _, err := reply.WriteTo(*c); err != nil {
 			return nil, fmt.Errorf("sock write: %w", err)
 		}
 
-		link(conn, c.conn.(net.Conn))
+		link(conn, *c)
 
 		return nil, nil
 	}
