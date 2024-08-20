@@ -289,8 +289,8 @@ func defaultConnect(ctx context.Context, addr string) (io.ReadWriteCloser, error
 	if err != nil {
 		return conn, err
 	}
-	conn.(*net.TCPConn).SetKeepAlive(false) // nolint
-	conn.(*net.TCPConn).SetLinger(0)        // nolint
+	_ = conn.(*net.TCPConn).SetKeepAlive(false) // nolint
+	_ = conn.(*net.TCPConn).SetLinger(0)        // nolint
 
 	return conn, nil
 }
@@ -310,16 +310,16 @@ func link(dst, src io.ReadWriteCloser) {
 
 	stop := func() {
 		once.Do(func() {
-			src.Close()
-			dst.Close()
+			_ = src.Close() // nolint
+			_ = dst.Close() // nolint
 		})
 	}
 
 	go func() {
 		defer stop()
-		io.Copy(dst, src)
+		_, _ = io.Copy(dst, src) // nolint
 	}()
 
 	defer stop()
-	io.Copy(src, dst)
+	_, _ = io.Copy(src, dst) // nolint
 }
