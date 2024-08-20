@@ -74,38 +74,43 @@ type Options struct {
 	// BindIP is public server interface (IP v4/v6) for protocol BIND operation:
 	// incoming traffic from outside to client sock.
 	// If not specified (nil) the socks5 BIND operation will be disabled.
-	// OPTIONAL
+	// OPTIONAL.
 	BindIP net.IP
 
 	// AllowNoAuth enables "NO AUTHENTICATION REQUIRED" authentication method
-	// OPTIONAL, default disabled
+	// OPTIONAL, default disabled.
 	AllowNoAuth bool
 
 	// Authenticate enables USERNAME/PASSWORD authentication method.
 	// Checks user credentials, non nil error causes DENIED status for client.
-	// OPTIONAL, default disabled
+	// OPTIONAL, default disabled.
 	Authenticate func(username, password []byte) error
 
 	// GSSAPI enables GSS-API authentication method.
 	// This func is called whenever new GSSAPI client connects to get an object
 	// implementing GSSAPI interface.
-	// OPTIONAL, default disabled
+	// OPTIONAL, default disabled.
 	GSSAPI func() (GSSAPI, error)
 
 	// Connect establishes tcp sock connection to remote server, addr is host:port string.
 	// If not specified, default dialer will be used that just net.Dial to remote server.
 	// Use specific Connect to create custom tunnels to remote server.
-	// OPTIONAL, default net.Dial
+	// Connect SHOULD return one the following errors: ErrHostUnreachable, ErrNetworkUnreachable,
+	// ErrConnectionRefused, ErrTTLExpired.
+	// OPTIONAL, default net.Dial.
 	Connect func(ctx context.Context, addr string) (io.ReadWriteCloser, error)
 
+	// Resolver resolves domain name (SOCKS5 domain address type).
+	// If not specified, default resolver will be used.
+	// OPTIONAL, default go DNS resolver with lru cache.
 	Resolver func(ctx context.Context, host []byte) (net.IP, error)
 
-	// Logger to log proxy errors
-	// OPTIONAL, default discarded
+	// Logger to log proxy errors.
+	// OPTIONAL, default discarded.
 	Log *slog.Logger
 
-	// Timeout defines timeout for inactive tcp connections
-	// OPTIONAL, default 30 seconds
+	// Timeout defines timeout for inactive tcp connections.
+	// OPTIONAL, default 30 seconds.
 	Timeout time.Duration
 }
 
@@ -161,8 +166,8 @@ func New(opts Options) (Server, error) {
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 
-	// enable timeout
-	timeout := 30 * time.Second
+	// setup network timeout
+	timeout := 30 * time.Second // default value
 	if opts.Timeout > 0 {
 		timeout = opts.Timeout
 	}

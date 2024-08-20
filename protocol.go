@@ -2,12 +2,22 @@ package proxyme
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
+	"os"
 	"sync"
+	"syscall"
 	"time"
+)
+
+var (
+	ErrHostUnreachable    = errors.New("host unreachable")
+	ErrNetworkUnreachable = errors.New("network unreachable")
+	ErrConnectionRefused  = errors.New("connection refused")
+	ErrTTLExpired         = errors.New("ttl expired")
 )
 
 // as defined http://www.ietf.org/rfc/rfc1928.txt
@@ -171,13 +181,31 @@ func (s socks5) connectState(msg commandRequest) state {
 		// make connect addr
 		addr, err := s.parseAddr(ctx, msg)
 		if err != nil {
+			var addrErr *net.AddrError
+			if errors.As(err, &addrErr) {
+				return s.commandErrorState(msg, addressNotSupported), err
+			}
 			return s.commandErrorState(msg, hostUnreachable), err
 		}
 
 		// connect
 		conn, err := s.connect(ctx, addr)
 		if err != nil {
-			return s.commandErrorState(msg, hostUnreachable), fmt.Errorf("dial: %w", err)
+			var status commandStatus
+			switch {
+			case errors.Is(err, ErrHostUnreachable):
+				status = hostUnreachable
+			case errors.Is(err, ErrConnectionRefused):
+				status = refused
+			case errors.Is(err, ErrNetworkUnreachable):
+				status = networkUnreachable
+			case errors.Is(err, ErrTTLExpired):
+				status = ttlExpired
+			default:
+				status = hostUnreachable
+			}
+
+			return s.commandErrorState(msg, status), err
 		}
 
 		// limited timeouts
@@ -287,8 +315,21 @@ func defaultConnect(ctx context.Context, addr string) (io.ReadWriteCloser, error
 	d := net.Dialer{KeepAlive: -1}
 	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
+		if errors.Is(err, syscall.EHOSTUNREACH) {
+			return conn, ErrHostUnreachable
+		}
+		if errors.Is(err, syscall.ECONNREFUSED) {
+			return conn, ErrConnectionRefused
+		}
+		if errors.Is(err, syscall.ENETUNREACH) {
+			return conn, ErrNetworkUnreachable
+		}
+		if errors.Is(err, os.ErrDeadlineExceeded) {
+			return conn, ErrTTLExpired
+		}
 		return conn, err
 	}
+
 	_ = conn.(*net.TCPConn).SetKeepAlive(false) // nolint
 	_ = conn.(*net.TCPConn).SetLinger(0)        // nolint
 
