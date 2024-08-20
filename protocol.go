@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"sync"
+	"time"
 )
 
 // as defined http://www.ietf.org/rfc/rfc1928.txt
@@ -67,6 +68,7 @@ type socks5 struct {
 	connect       func(ctx context.Context, addr string) (io.ReadWriteCloser, error)
 	resolveDomain func(ctx context.Context, domain []byte) (net.IP, error)
 	log           *slog.Logger
+	timeout       time.Duration
 }
 
 // initState starts protocol negotiation
@@ -163,24 +165,27 @@ func (s socks5) newCommandState(c *io.ReadWriteCloser) (state, error) {
 
 func (s socks5) connectState(msg commandRequest) state {
 	return func(c *io.ReadWriteCloser) (state, error) {
-		ctx := context.TODO() // todo: limited dns resolve + connect
-		// make connect addr
-		var addr string
+		ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
+		defer cancel()
 
-		if msg.addressType == domainName {
-			ip, err := s.resolveDomain(ctx, msg.addr)
-			if err != nil {
-				return s.commandErrorState(msg, hostUnreachable), fmt.Errorf("resolve domain: %w", err)
-			}
-			addr = fmt.Sprintf("%s:%d", ip, msg.port)
-		} else {
-			addr = fmt.Sprintf("%s:%d", net.IP(msg.addr), msg.port)
+		// make connect addr
+		addr, err := s.parseAddr(ctx, msg)
+		if err != nil {
+			return s.commandErrorState(msg, hostUnreachable), err
 		}
 
 		// connect
 		conn, err := s.connect(ctx, addr)
 		if err != nil {
 			return s.commandErrorState(msg, hostUnreachable), fmt.Errorf("dial: %w", err)
+		}
+
+		// limited timeouts
+		if tcpConn, ok := conn.(*net.TCPConn); ok {
+			conn = &tcpConnWithTimeout{
+				TCPConn: tcpConn,
+				timeout: s.timeout,
+			}
 		}
 
 		reply := commandReply{
@@ -199,6 +204,21 @@ func (s socks5) connectState(msg commandRequest) state {
 
 		return nil, nil
 	}
+}
+
+// parseAddr parses command request and returns connection string in "host:port" format
+func (s socks5) parseAddr(ctx context.Context, msg commandRequest) (string, error) {
+	if msg.addressType != domainName {
+		return fmt.Sprintf("%s:%d", net.IP(msg.addr), msg.port), nil
+	}
+
+	// domain name: dns resolve
+	ip, err := s.resolveDomain(ctx, msg.addr)
+	if err != nil {
+		return "", fmt.Errorf("resolve domain: %w", err)
+	}
+
+	return fmt.Sprintf("%s:%d", ip, msg.port), nil
 }
 
 func (s socks5) commandErrorState(msg commandRequest, status commandStatus) state {
@@ -264,9 +284,15 @@ func (s socks5) bindState(msg commandRequest) state {
 }
 
 func defaultConnect(ctx context.Context, addr string) (io.ReadWriteCloser, error) {
-	var d net.Dialer
+	d := net.Dialer{KeepAlive: -1}
+	conn, err := d.DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return conn, err
+	}
+	conn.(*net.TCPConn).SetKeepAlive(false) // nolint
+	conn.(*net.TCPConn).SetLinger(0)        // nolint
 
-	return d.DialContext(ctx, "tcp", addr)
+	return conn, nil
 }
 
 func defaultDomainResolver(ctx context.Context, domain []byte) (net.IP, error) {

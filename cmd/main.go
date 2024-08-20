@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/dblokhin/proxyme"
 )
@@ -150,7 +151,8 @@ func getOpts() (proxyme.Options, error) {
 		Authenticate: authenticate,
 		//GSSAPI:       nil,
 		//Connect:      nil,
-		Log: slog.Default(),
+		Log:     slog.Default(),
+		Timeout: 5 * time.Second,
 	}
 
 	return opts, nil

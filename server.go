@@ -103,6 +103,10 @@ type Options struct {
 	// Logger to log proxy errors
 	// OPTIONAL, default discarded
 	Log *slog.Logger
+
+	// Timeout defines timeout for inactive tcp connections
+	// OPTIONAL, default 30 seconds
+	Timeout time.Duration
 }
 
 type Server struct {
@@ -110,6 +114,7 @@ type Server struct {
 	done     chan any
 	once     *sync.Once
 	log      *slog.Logger
+	timeout  time.Duration
 }
 
 // New returns new socks5 proxyme server
@@ -156,6 +161,12 @@ func New(opts Options) (Server, error) {
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 
+	// enable timeout
+	timeout := 30 * time.Second
+	if opts.Timeout > 0 {
+		timeout = opts.Timeout
+	}
+
 	return Server{
 		protocol: socks5{
 			authMethods:   authMethods,
@@ -163,10 +174,12 @@ func New(opts Options) (Server, error) {
 			connect:       connectFn,
 			resolveDomain: resolverFn,
 			log:           logger,
+			timeout:       timeout,
 		},
-		done: make(chan any),
-		once: new(sync.Once),
-		log:  logger,
+		done:    make(chan any),
+		once:    new(sync.Once),
+		log:     logger,
+		timeout: timeout,
 	}, nil
 }
 
@@ -176,12 +189,12 @@ func (s Server) ListenAndServe(network, addr string) error {
 		return fmt.Errorf("listen: %q", err)
 	}
 
-	defer s.Close()
-
 	go func() {
 		<-s.done
 		_ = ls.Close()
 	}()
+
+	defer s.Close()
 
 	for {
 		conn, err := ls.Accept()
@@ -195,14 +208,25 @@ func (s Server) ListenAndServe(network, addr string) error {
 			return fmt.Errorf("accept: %w", err)
 		}
 
-		go s.handle(conn)
+		go s.handle(conn.(*net.TCPConn))
 	}
 }
 
 // handle handles new client connection, starts socks5 protocol negation
-func (s Server) handle(conn net.Conn) {
-	var client io.ReadWriteCloser = conn
-	defer client.Close() // nolint
+func (s Server) handle(conn *net.TCPConn) {
+	defer conn.Close() // nolint
+
+	if err := conn.SetKeepAlive(false); err != nil {
+		s.log.Error(err.Error())
+	}
+	if err := conn.SetLinger(0); err != nil {
+		s.log.Error(err.Error())
+	}
+
+	var client io.ReadWriteCloser = tcpConnWithTimeout{
+		TCPConn: conn,
+		timeout: s.timeout,
+	}
 
 	for state, err := s.protocol.initState(&client); state != nil; {
 		if err != nil {
