@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"net"
 	"os"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -76,6 +77,21 @@ type socks5 struct {
 	connect       func(ctx context.Context, addr string) (io.ReadWriteCloser, error)
 	resolveDomain func(ctx context.Context, domain []byte) (net.IP, error)
 	timeout       time.Duration
+}
+
+// resolveHost parses command request and returns host IP (resolves IP if needed).
+func (s socks5) resolveHost(ctx context.Context, msg commandRequest) (net.IP, error) {
+	if msg.addressType != domainName {
+		return msg.addr, nil
+	}
+
+	// domain name: dns resolve
+	ip, err := s.resolveDomain(ctx, msg.addr)
+	if err != nil {
+		return nil, fmt.Errorf("resolve domain: %w", err)
+	}
+
+	return ip, nil
 }
 
 // state is state through the SOCKS5 protocol negotiations.
@@ -186,7 +202,7 @@ func runConnect(state *state) (transition, error) {
 	defer cancel()
 
 	// make connect addr
-	addr, err := parseCommandAddr(ctx, state)
+	ip, err := state.opts.resolveHost(ctx, state.command)
 	if err != nil {
 		var addrErr *net.AddrError
 		if errors.As(err, &addrErr) {
@@ -198,6 +214,7 @@ func runConnect(state *state) (transition, error) {
 	}
 
 	// connect
+	addr := net.JoinHostPort(ip.String(), strconv.Itoa(int(state.command.port)))
 	conn, err := state.opts.connect(ctx, addr)
 	if err != nil {
 		switch {
@@ -239,21 +256,6 @@ func runConnect(state *state) (transition, error) {
 	link(conn, state.conn)
 
 	return nil, nil
-}
-
-// parseCommandAddr parses command request and returns connection string in "host:port" format
-func parseCommandAddr(ctx context.Context, state *state) (string, error) {
-	if state.command.addressType != domainName {
-		return fmt.Sprintf("%s:%d", net.IP(state.command.addr), state.command.port), nil
-	}
-
-	// domain name: dns resolve
-	ip, err := state.opts.resolveDomain(ctx, state.command.addr)
-	if err != nil {
-		return "", fmt.Errorf("resolve domain: %w", err)
-	}
-
-	return fmt.Sprintf("%s:%d", ip, state.command.port), nil
 }
 
 func failCommand(state *state) (transition, error) {
@@ -318,20 +320,24 @@ func runBind(state *state) (transition, error) {
 }
 
 func defaultConnect(ctx context.Context, addr string) (io.ReadWriteCloser, error) {
+	if len(addr) == 0 {
+		return nil, fmt.Errorf("invalid addr: %q", addr)
+	}
+
 	d := net.Dialer{KeepAlive: -1}
 	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		if errors.Is(err, syscall.EHOSTUNREACH) {
-			return conn, ErrHostUnreachable
+			return conn, fmt.Errorf("%w: %v", ErrHostUnreachable, err)
 		}
 		if errors.Is(err, syscall.ECONNREFUSED) {
-			return conn, ErrConnectionRefused
+			return conn, fmt.Errorf("%w: %v", ErrConnectionRefused, err)
 		}
 		if errors.Is(err, syscall.ENETUNREACH) {
-			return conn, ErrNetworkUnreachable
+			return conn, fmt.Errorf("%w: %v", ErrNetworkUnreachable, err)
 		}
 		if errors.Is(err, os.ErrDeadlineExceeded) {
-			return conn, ErrTTLExpired
+			return conn, fmt.Errorf("%w: %v", ErrTTLExpired, err)
 		}
 		return conn, err
 	}
@@ -346,6 +352,13 @@ func defaultDomainResolver(ctx context.Context, domain []byte) (net.IP, error) {
 	ips, err := defaultResolver.LookupIP(ctx, "ip", string(domain))
 	if err != nil {
 		return nil, err
+	}
+
+	// ipv4 priority
+	for _, ip := range ips {
+		if len(ip) == net.IPv4len {
+			return ip, nil
+		}
 	}
 
 	return ips[rand.Intn(len(ips))], nil
