@@ -586,7 +586,7 @@ func Test_authRequest_validate(t *testing.T) {
 				if err != nil {
 					return nil
 				}
-				return fmt.Errorf("got nil, want invalid auth method error")
+				return fmt.Errorf("got nil, want invalid authenticate method error")
 			},
 		},
 	}

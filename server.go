@@ -122,7 +122,7 @@ func New(opts Options) (Server, error) {
 	// set up allowed authentication methods
 	authMethods := make(map[authMethod]authHandler)
 	if opts.AllowNoAuth {
-		// enable no auth method
+		// enable no authenticate method
 		authMethods[typeNoAuth] = &noAuth{}
 	}
 	if opts.Authenticate != nil {
@@ -139,7 +139,7 @@ func New(opts Options) (Server, error) {
 	}
 
 	if len(authMethods) == 0 {
-		return Server{}, errors.New("none of socks5 auth method are specified")
+		return Server{}, errors.New("none of socks5 authenticate method are specified")
 	}
 
 	// set up connect fn for creating tunnel to remote server
@@ -216,12 +216,16 @@ func (s Server) handle(conn *net.TCPConn) {
 		timeout: s.timeout,
 	}
 
-	for state, err := s.protocol.initState(&client); state != nil; {
+	state := state{
+		opts: s.protocol,
+		conn: client,
+	}
+	for stage, err := initial(&state); stage != nil; {
 		if err != nil {
 			_, _ = fmt.Fprintln(os.Stderr, "proxyme:", err)
 		}
 
-		state, err = state(&client)
+		stage, err = stage(&state)
 	}
 }
 

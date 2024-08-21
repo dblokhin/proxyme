@@ -42,11 +42,11 @@ func (a *authRequest) ReadFrom(r io.Reader) (n int64, err error) {
 
 func (a *authRequest) validate() error {
 	if a.version != protoVersion {
-		return fmt.Errorf("invalid auth.version: %d", a.version)
+		return fmt.Errorf("invalid authenticate.version: %d", a.version)
 	}
 
 	if len(a.methods) == 0 {
-		return fmt.Errorf("empty auth.methods")
+		return fmt.Errorf("empty authenticate.methods")
 	}
 
 	return nil
@@ -227,7 +227,7 @@ func (r commandReply) WriteTo(w io.Writer) (n int64, err error) {
 	return
 }
 
-// loginRequest clients request username/passwd auth scenario
+// loginRequest clients request username/passwd authenticate scenario
 type loginRequest struct {
 	version  uint8 // MUST BE 1
 	username []byte

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"net"
 	"os"
 	"sync"
@@ -68,9 +69,7 @@ const (
 	addressNotSupported commandStatus = 8 // Address type not supported
 )
 
-type state func(*io.ReadWriteCloser) (state, error)
-
-// socks5 implements socks5 protocol
+// socks5 implements socks5 protocol.
 type socks5 struct {
 	authMethods   map[authMethod]authHandler
 	bindIP        net.IP // external address for BIND command
@@ -79,234 +78,243 @@ type socks5 struct {
 	timeout       time.Duration
 }
 
-// initState starts protocol negotiation
-func (s socks5) initState(c *io.ReadWriteCloser) (state, error) {
+// state is state through the SOCKS5 protocol negotiations.
+type state struct {
+	opts socks5 // protocol options
+
+	conn    io.ReadWriteCloser // client connection
+	methods []authMethod       // proposed authenticate methods by client
+	method  authHandler        // accepted authenticate method (handler)
+	command commandRequest     // clients command to socks5 server
+	status  commandStatus      // server reply/result on command
+}
+
+type transition func(*state) (transition, error)
+
+// initial starts protocol negotiation
+func initial(state *state) (transition, error) {
 	var msg authRequest
 
-	if _, err := msg.ReadFrom(*c); err != nil {
+	if _, err := msg.ReadFrom(state.conn); err != nil {
 		return nil, fmt.Errorf("sock read: %w", err)
 	}
-
 	if err := msg.validate(); err != nil {
 		return nil, err
 	}
 
-	return s.chooseAuthState(msg), nil
-}
+	state.methods = msg.methods
 
-func (s socks5) chooseAuthState(msg authRequest) state {
-	return func(c *io.ReadWriteCloser) (state, error) {
-		for _, code := range msg.methods {
-			if method, ok := s.authMethods[code]; ok {
-				return s.authState(method), nil
-			}
+	// choose auth method
+	for _, code := range state.methods {
+		if method, ok := state.opts.authMethods[code]; ok {
+			state.method = method
+			return authenticate, nil
 		}
-
-		return s.errAuthState(msg), nil
 	}
+
+	return failAuth, nil
 }
 
-func (s socks5) errAuthState(msg authRequest) state {
-	return func(c *io.ReadWriteCloser) (state, error) {
-		reply := authReply{method: typeError}
+func failAuth(state *state) (transition, error) {
+	// If the selected METHOD is X'FF', none of the methods listed by the
+	// client are acceptable, and the client MUST close the connection.
+	reply := authReply{method: typeError}
 
-		if _, err := reply.WriteTo(*c); err != nil {
-			return nil, fmt.Errorf("sock write: %w", err)
-		}
-
-		// stop
-		return nil, fmt.Errorf("unsupported auth methods: %v", msg.methods)
+	if _, err := reply.WriteTo(state.conn); err != nil {
+		return nil, fmt.Errorf("sock write: %w", err)
 	}
+
+	// stop
+	return nil, fmt.Errorf("unsupported authenticate methods: %v", state.methods)
 }
 
-func (s socks5) authState(method authHandler) state {
-	return func(c *io.ReadWriteCloser) (state, error) {
-		// send chosen auth method
-		reply := authReply{method: method.method()}
+func authenticate(state *state) (transition, error) {
+	// send chosen authenticate method
+	reply := authReply{method: state.method.method()}
 
-		if _, err := reply.WriteTo(*c); err != nil {
-			return nil, fmt.Errorf("sock write: %w", err)
-		}
-
-		// do authentication
-		conn, err := method.auth(*c)
-		if err != nil {
-			return nil, fmt.Errorf("auth: %w", err)
-		}
-
-		// Hijacks client conn (reason: protocol flow might consider encapsulation).
-		// For example GSSAPI encapsulates the traffic intro gssapi protocol messages.
-		// Package user can encapsulate traffic into whatever he wants using Connect method.
-		*c = conn
-
-		return s.newCommandState, nil
+	if _, err := reply.WriteTo(state.conn); err != nil {
+		return nil, fmt.Errorf("sock write: %w", err)
 	}
+
+	// do authentication
+	conn, err := state.method.auth(state.conn)
+	if err != nil {
+		return nil, fmt.Errorf("authenticate: %w", err)
+	}
+
+	// Hijacks client conn (reason: protocol flow might consider encapsulation).
+	// For example GSSAPI encapsulates the traffic intro gssapi protocol messagestate.opts.
+	// Package user can encapsulate traffic into whatever he wants using Connect method.
+	state.conn = conn
+
+	return getCommand, nil
 }
 
-func (s socks5) newCommandState(c *io.ReadWriteCloser) (state, error) {
+func getCommand(state *state) (transition, error) {
 	var msg commandRequest
 
-	if _, err := msg.ReadFrom(*c); err != nil {
+	if _, err := msg.ReadFrom(state.conn); err != nil {
 		return nil, fmt.Errorf("sock read: %w", err)
 	}
-
-	// validate fields
 	if err := msg.validate(); err != nil {
 		return nil, err
 	}
+
+	state.command = msg
 
 	switch msg.commandType {
 	case connect:
-		return s.connectState(msg), nil
+		return runConnect, nil
 	case bind:
-		if len(s.bindIP) == 0 {
-			return s.commandErrorState(msg, notAllowed), nil
+		if len(state.opts.bindIP) == 0 {
+			state.status = notAllowed
+			return failCommand, nil
 		}
-		return s.bindState(msg), nil
+		return runBind, nil
 	case udpAssoc:
-		return s.commandErrorState(msg, notSupported), nil
+		state.status = notSupported
+		return failCommand, nil
 
 	default:
-		return s.commandErrorState(msg, notSupported), fmt.Errorf("unsupported commandMessage: %d", msg.commandType)
+		state.status = notSupported
+		return failCommand, fmt.Errorf("unsupported command: %d", msg.commandType)
 	}
 }
 
-func (s socks5) connectState(msg commandRequest) state {
-	return func(c *io.ReadWriteCloser) (state, error) {
-		ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
-		defer cancel()
+func runConnect(state *state) (transition, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), state.opts.timeout)
+	defer cancel()
 
-		// make connect addr
-		addr, err := s.parseAddr(ctx, msg)
-		if err != nil {
-			var addrErr *net.AddrError
-			if errors.As(err, &addrErr) {
-				return s.commandErrorState(msg, addressNotSupported), err
-			}
-			return s.commandErrorState(msg, hostUnreachable), err
+	// make connect addr
+	addr, err := parseCommandAddr(ctx, state)
+	if err != nil {
+		var addrErr *net.AddrError
+		if errors.As(err, &addrErr) {
+			state.status = addressNotSupported
+			return failCommand, err
 		}
-
-		// connect
-		conn, err := s.connect(ctx, addr)
-		if err != nil {
-			var status commandStatus
-			switch {
-			case errors.Is(err, ErrHostUnreachable):
-				status = hostUnreachable
-			case errors.Is(err, ErrConnectionRefused):
-				status = refused
-			case errors.Is(err, ErrNetworkUnreachable):
-				status = networkUnreachable
-			case errors.Is(err, ErrTTLExpired):
-				status = ttlExpired
-			default:
-				status = hostUnreachable
-			}
-
-			return s.commandErrorState(msg, status), err
-		}
-
-		// limited timeouts
-		if tcpConn, ok := conn.(*net.TCPConn); ok {
-			conn = &tcpConnWithTimeout{
-				TCPConn: tcpConn,
-				timeout: s.timeout,
-			}
-		}
-
-		reply := commandReply{
-			rep:         succeeded,
-			rsv:         0,
-			addressType: msg.addressType,
-			addr:        msg.addr,
-			port:        msg.port,
-		}
-
-		if _, err := reply.WriteTo(*c); err != nil {
-			return nil, fmt.Errorf("sock write: %w", err)
-		}
-
-		link(conn, *c)
-
-		return nil, nil
+		state.status = hostUnreachable
+		return failCommand, err
 	}
+
+	// connect
+	conn, err := state.opts.connect(ctx, addr)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrHostUnreachable):
+			state.status = hostUnreachable
+		case errors.Is(err, ErrConnectionRefused):
+			state.status = refused
+		case errors.Is(err, ErrNetworkUnreachable):
+			state.status = networkUnreachable
+		case errors.Is(err, ErrTTLExpired):
+			state.status = ttlExpired
+		default:
+			state.status = hostUnreachable
+		}
+
+		return failCommand, err
+	}
+
+	// limited timeouts
+	if tcpConn, ok := conn.(*net.TCPConn); ok {
+		conn = &tcpConnWithTimeout{
+			TCPConn: tcpConn,
+			timeout: state.opts.timeout,
+		}
+	}
+
+	reply := commandReply{
+		rep:         succeeded,
+		rsv:         0,
+		addressType: state.command.addressType,
+		addr:        state.command.addr,
+		port:        state.command.port,
+	}
+
+	if _, err := reply.WriteTo(state.conn); err != nil {
+		return nil, fmt.Errorf("sock write: %w", err)
+	}
+
+	link(conn, state.conn)
+
+	return nil, nil
 }
 
-// parseAddr parses command request and returns connection string in "host:port" format
-func (s socks5) parseAddr(ctx context.Context, msg commandRequest) (string, error) {
-	if msg.addressType != domainName {
-		return fmt.Sprintf("%s:%d", net.IP(msg.addr), msg.port), nil
+// parseCommandAddr parses command request and returns connection string in "host:port" format
+func parseCommandAddr(ctx context.Context, state *state) (string, error) {
+	if state.command.addressType != domainName {
+		return fmt.Sprintf("%s:%d", net.IP(state.command.addr), state.command.port), nil
 	}
 
 	// domain name: dns resolve
-	ip, err := s.resolveDomain(ctx, msg.addr)
+	ip, err := state.opts.resolveDomain(ctx, state.command.addr)
 	if err != nil {
 		return "", fmt.Errorf("resolve domain: %w", err)
 	}
 
-	return fmt.Sprintf("%s:%d", ip, msg.port), nil
+	return fmt.Sprintf("%s:%d", ip, state.command.port), nil
 }
 
-func (s socks5) commandErrorState(msg commandRequest, status commandStatus) state {
+func failCommand(state *state) (transition, error) {
 	reply := commandReply{
-		rep:         status,
+		rep:         state.status,
 		rsv:         0,
-		addressType: msg.addressType,
-		addr:        msg.addr,
-		port:        msg.port,
+		addressType: state.command.addressType,
+		addr:        state.command.addr,
+		port:        state.command.port,
 	}
 
-	return func(c *io.ReadWriteCloser) (state, error) {
-		if _, err := reply.WriteTo(*c); err != nil {
-			return nil, fmt.Errorf("sock write: %w", err)
-		}
-
-		return s.newCommandState, nil
+	if _, err := reply.WriteTo(state.conn); err != nil {
+		return nil, fmt.Errorf("sock write: %w", err)
 	}
+
+	return getCommand, nil
 }
 
-func (s socks5) bindState(msg commandRequest) state {
-	return func(c *io.ReadWriteCloser) (state, error) {
-		ls, err := net.Listen("tcp", fmt.Sprintf("%s:0", s.bindIP))
-		if err != nil {
-			return s.commandErrorState(msg, sockFailure), fmt.Errorf("bind: %w", err)
-		}
-
-		port := uint16(ls.Addr().(*net.TCPAddr).Port)
-		ip := ls.Addr().(*net.TCPAddr).IP
-
-		addrType := ipv4
-		if len(ip) != 4 {
-			addrType = ipv6
-		}
-
-		reply := commandReply{
-			rep:         succeeded,
-			rsv:         0,
-			addressType: addrType,
-			addr:        s.bindIP,
-			port:        port,
-		}
-
-		// send first reply
-		if _, err := reply.WriteTo(*c); err != nil {
-			return nil, fmt.Errorf("sock write: %w", err)
-		}
-
-		conn, err := ls.Accept()
-		if err != nil {
-			return s.commandErrorState(msg, sockFailure), fmt.Errorf("link accept: %w", err)
-		}
-
-		// send first reply (on connect)
-		if _, err := reply.WriteTo(*c); err != nil {
-			return nil, fmt.Errorf("sock write: %w", err)
-		}
-
-		link(conn, *c)
-
-		return nil, nil
+func runBind(state *state) (transition, error) {
+	// todo move it to hook like connect, elimination bindIP
+	ls, err := net.Listen("tcp", fmt.Sprintf("%s:0", state.opts.bindIP))
+	if err != nil {
+		state.status = sockFailure
+		return failCommand, fmt.Errorf("bind: %w", err)
 	}
+
+	port := uint16(ls.Addr().(*net.TCPAddr).Port)
+	ip := ls.Addr().(*net.TCPAddr).IP
+
+	addrType := ipv4
+	if len(ip) != 4 {
+		addrType = ipv6
+	}
+
+	reply := commandReply{
+		rep:         succeeded,
+		rsv:         0,
+		addressType: addrType,
+		addr:        state.opts.bindIP,
+		port:        port,
+	}
+
+	// send first reply
+	if _, err := reply.WriteTo(state.conn); err != nil {
+		return nil, fmt.Errorf("sock write: %w", err)
+	}
+
+	conn, err := ls.Accept()
+	if err != nil {
+		state.status = sockFailure
+		return failCommand, fmt.Errorf("link accept: %w", err)
+	}
+
+	// send first reply (on connect)
+	if _, err := reply.WriteTo(state.conn); err != nil {
+		return nil, fmt.Errorf("sock write: %w", err)
+	}
+
+	link(conn, state.conn)
+
+	return nil, nil
 }
 
 func defaultConnect(ctx context.Context, addr string) (io.ReadWriteCloser, error) {
@@ -337,10 +345,10 @@ func defaultConnect(ctx context.Context, addr string) (io.ReadWriteCloser, error
 func defaultDomainResolver(ctx context.Context, domain []byte) (net.IP, error) {
 	ips, err := defaultResolver.LookupIP(ctx, "ip", string(domain))
 	if err != nil {
-		return net.IP{}, err
+		return nil, err
 	}
 
-	return ips[0], nil
+	return ips[rand.Intn(len(ips))], nil
 }
 
 // nolint
