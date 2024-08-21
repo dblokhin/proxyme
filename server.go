@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
+	"os"
 	"sync"
 	"time"
 )
@@ -105,10 +105,6 @@ type Options struct {
 	// OPTIONAL, default go DNS resolver with lru cache.
 	Resolver func(ctx context.Context, host []byte) (net.IP, error)
 
-	// Logger to log proxy errors.
-	// OPTIONAL, default discarded.
-	Log *slog.Logger
-
 	// Timeout defines timeout for inactive tcp connections.
 	// OPTIONAL, default 30 seconds.
 	Timeout time.Duration
@@ -118,7 +114,6 @@ type Server struct {
 	protocol socks5
 	done     chan any
 	once     *sync.Once
-	log      *slog.Logger
 	timeout  time.Duration
 }
 
@@ -160,12 +155,6 @@ func New(opts Options) (Server, error) {
 		resolverFn = defaultDomainResolver
 	}
 
-	// enable logger if set
-	logger := opts.Log
-	if logger == nil {
-		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
-	}
-
 	// setup network timeout
 	timeout := 30 * time.Second // default value
 	if opts.Timeout > 0 {
@@ -178,12 +167,10 @@ func New(opts Options) (Server, error) {
 			bindIP:        opts.BindIP,
 			connect:       connectFn,
 			resolveDomain: resolverFn,
-			log:           logger,
 			timeout:       timeout,
 		},
 		done:    make(chan any),
 		once:    new(sync.Once),
-		log:     logger,
 		timeout: timeout,
 	}, nil
 }
@@ -221,12 +208,8 @@ func (s Server) ListenAndServe(network, addr string) error {
 func (s Server) handle(conn *net.TCPConn) {
 	defer conn.Close() // nolint
 
-	if err := conn.SetKeepAlive(false); err != nil {
-		s.log.Error(err.Error())
-	}
-	if err := conn.SetLinger(0); err != nil {
-		s.log.Error(err.Error())
-	}
+	_ = conn.SetKeepAlive(false)
+	_ = conn.SetLinger(0)
 
 	var client io.ReadWriteCloser = tcpConnWithTimeout{
 		TCPConn: conn,
@@ -235,7 +218,7 @@ func (s Server) handle(conn *net.TCPConn) {
 
 	for state, err := s.protocol.initState(&client); state != nil; {
 		if err != nil {
-			s.log.Error(err.Error())
+			_, _ = fmt.Fprintln(os.Stderr, "proxyme:", err)
 		}
 
 		state, err = state(&client)

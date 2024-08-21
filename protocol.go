@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"os"
 	"sync"
@@ -77,7 +76,6 @@ type socks5 struct {
 	bindIP        net.IP // external address for BIND command
 	connect       func(ctx context.Context, addr string) (io.ReadWriteCloser, error)
 	resolveDomain func(ctx context.Context, domain []byte) (net.IP, error)
-	log           *slog.Logger
 	timeout       time.Duration
 }
 
