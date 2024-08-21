@@ -6,8 +6,8 @@ package main
 import (
 	"errors"
 	"fmt"
+	"github.com/dblokhin/proxyme"
 	"log"
-	"log/slog"
 	"net"
 	"os"
 	"os/signal"
@@ -16,9 +16,6 @@ import (
 	"strings"
 	"sync"
 	"syscall"
-	"time"
-
-	"github.com/dblokhin/proxyme"
 )
 
 import _ "net/http/pprof"
@@ -151,8 +148,6 @@ func getOpts() (proxyme.Options, error) {
 		Authenticate: authenticate,
 		//GSSAPI:       nil,
 		//Connect:      nil,
-		Log:     slog.Default(),
-		Timeout: 5 * time.Second,
 	}
 
 	return opts, nil
