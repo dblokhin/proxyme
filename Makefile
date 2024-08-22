@@ -4,7 +4,7 @@ GOCLEAN = $(GO) clean
 GOTEST = $(GO) test
 GOGET = $(GO) get
 BINARY_NAME = proxyme
-GOLANGCI_LINT_VERSION := v1.59.1
+GOLANGCI_LINT_VERSION := v1.60.2
 BIN_DIR := $(shell go env GOPATH)/bin
 
 build:
