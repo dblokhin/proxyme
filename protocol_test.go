@@ -414,7 +414,8 @@ func Test_authenticate(t *testing.T) {
 func Test_getCommand(t *testing.T) {
 	port := byte(0x77)
 	ip4 := net.ParseIP("192.168.0.1").To4()
-	validConnect := bytes.NewReader([]byte{protoVersion, byte(connect), 0x00, 0x01, ip4[0], ip4[1], ip4[2], ip4[3], 0x00, port})
+	validConnect := bytes.NewReader([]byte{protoVersion, byte(connect), 0x00, byte(ipv4), ip4[0], ip4[1], ip4[2], ip4[3], 0x00, port})
+	invalidAddrType := bytes.NewReader([]byte{protoVersion, byte(connect), 0x00, 0x22, ip4[0], ip4[1], ip4[2], ip4[3], 0x00, port})
 	invalidConnect := bytes.NewReader([]byte{protoVersion + 100, byte(connect), 0x00, 0x01, ip4[0], ip4[1], ip4[2], ip4[3], 0x00, port})
 	unsupportedCommand := bytes.NewReader([]byte{protoVersion, byte(0x22), 0x00, 0x01, ip4[0], ip4[1], ip4[2], ip4[3], 0x00, port})
 
@@ -465,7 +466,6 @@ func Test_getCommand(t *testing.T) {
 				if err == nil {
 					return fmt.Errorf("expected error but got nil")
 				}
-				fmt.Println(s.command)
 				if s.status != notSupported {
 					return fmt.Errorf("got command status %d, want %d", s.status, notSupported)
 				}
@@ -476,7 +476,28 @@ func Test_getCommand(t *testing.T) {
 			},
 		},
 		{
-			name: "invalid command payload",
+			name: "unsupported address type",
+			args: args{
+				state: &state{
+					conn: fakeRWCloser{
+						fnRead: func(p []byte) (n int, err error) {
+							return invalidAddrType.Read(p)
+						},
+					},
+				},
+			},
+			check: func(s *state, t transition, err error) error {
+				if !errors.Is(err, errInvalidAddrType) {
+					return fmt.Errorf("got %v, want %v", err, errInvalidAddrType)
+				}
+				if t != nil {
+					return fmt.Errorf("want nil transition")
+				}
+				return nil
+			},
+		},
+		{
+			name: "invalid command payload (invalid proto version)",
 			args: args{
 				state: &state{
 					conn: fakeRWCloser{
@@ -523,6 +544,115 @@ func Test_getCommand(t *testing.T) {
 			got, err := getCommand(tt.args.state)
 			if err := tt.check(tt.args.state, got, err); err != nil {
 				t.Errorf("getCommand() error = %v", err)
+				return
+			}
+		})
+	}
+}
+
+func Test_failCommand(t *testing.T) {
+	type args struct {
+		state *state
+	}
+	tests := []struct {
+		name  string
+		args  args
+		check func(*state, transition, error) error
+	}{
+		{
+			name: "common case",
+			args: args{
+				state: &state{
+					command: commandRequest{
+						version:     5,
+						commandType: connect,
+						rsv:         0,
+						addressType: domainName, // <<- invalid address type
+						addr:        []byte("google.com"),
+						port:        80,
+					},
+					status: notAllowed,
+					conn: fakeRWCloser{
+						fnWrite: func(p []byte) (n int, err error) {
+							return len(p), nil
+						},
+					},
+				},
+			},
+			check: func(s *state, t transition, err error) error {
+				if err != nil {
+					return fmt.Errorf("unexpected error: %v", err)
+				}
+
+				if t == nil {
+					return fmt.Errorf("got nil transition")
+				}
+
+				return nil
+			},
+		},
+		{
+			name: "invalid reply message",
+			args: args{
+				state: &state{
+					command: commandRequest{
+						version:     5,
+						commandType: connect,
+						rsv:         0,
+						addressType: 18, // <<- invalid address type
+						addr:        nil,
+						port:        0,
+					},
+					status: addressNotSupported,
+					conn: fakeRWCloser{
+						fnWrite: func(p []byte) (n int, err error) {
+							return len(p), nil
+						},
+					},
+				},
+			},
+			check: func(s *state, t transition, err error) error {
+				if !errors.Is(err, errInvalidAddrType) {
+					return fmt.Errorf("got %v, want %v", err, errInvalidAddrType)
+				}
+
+				if t != nil {
+					return fmt.Errorf("want nil transition")
+				}
+
+				return nil
+			},
+		},
+		{
+			name: "network error",
+			args: args{
+				state: &state{
+					status: notSupported,
+					conn: fakeRWCloser{
+						fnWrite: func(p []byte) (n int, err error) {
+							return 0, io.EOF
+						},
+					},
+				},
+			},
+			check: func(s *state, t transition, err error) error {
+				if !errors.Is(err, io.EOF) {
+					return fmt.Errorf("got %v, want %v", err, io.EOF)
+				}
+
+				if t != nil {
+					return fmt.Errorf("want nil transition")
+				}
+
+				return nil
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := failCommand(tt.args.state)
+			if err := tt.check(tt.args.state, got, err); err != nil {
+				t.Errorf("failCommand() error = %v", err)
 				return
 			}
 		})

@@ -91,11 +91,12 @@ func Test_commandRequest_ReadFrom(t *testing.T) {
 	ip4 := net.ParseIP("192.168.0.1").To4()
 	ip6 := ip4.To16()
 	domain := []byte("google")
-	payloadipv4 := []byte{protoVersion, byte(connect), 0x00, 0x01, ip4[0], ip4[1], ip4[2], ip4[3], 0x00, port}
-	payloadipv6 := []byte{protoVersion, byte(connect), 0x00, 0x04, ip6[0], ip6[1], ip6[2], ip6[3], ip6[4], ip6[5],
+	payloadipv4 := []byte{protoVersion, byte(connect), 0x00, byte(ipv4), ip4[0], ip4[1], ip4[2], ip4[3], 0x00, port}
+	payloadipv6 := []byte{protoVersion, byte(connect), 0x00, byte(ipv6), ip6[0], ip6[1], ip6[2], ip6[3], ip6[4], ip6[5],
 		ip6[6], ip6[7], ip6[8], ip6[9], ip6[10], ip6[11], ip6[12], ip6[13], ip6[14], ip6[15], 0x00, port}
-	payloadDomain := []byte{protoVersion, byte(connect), 0x00, 0x03, byte(len(domain)), domain[0], domain[1],
+	payloadDomain := []byte{protoVersion, byte(connect), 0x00, byte(domainName), byte(len(domain)), domain[0], domain[1],
 		domain[2], domain[3], domain[4], domain[5], 0x00, port}
+	invalidAddrType := []byte{protoVersion, byte(connect), 0x00, 0x10, ip4[0], ip4[1], ip4[2], ip4[3], 0x00, port}
 
 	type args struct {
 		r io.Reader
@@ -202,6 +203,21 @@ func Test_commandRequest_ReadFrom(t *testing.T) {
 				}
 				if msg.port != uint16(port) {
 					return fmt.Errorf("got port %d, want %d", msg.port, port)
+				}
+				return nil
+			},
+		},
+		{
+			name: "invalid address type",
+			args: args{
+				r: bytes.NewReader(invalidAddrType),
+			},
+			check: func(msg *commandRequest, i int64, err error) error {
+				if !errors.Is(err, errInvalidAddrType) {
+					return fmt.Errorf("got %v, want %v", err, errInvalidAddrType)
+				}
+				if msg.addressType != 0x10 {
+					return fmt.Errorf("got addr type %v, want %v", msg.addressType, 0x10)
 				}
 				return nil
 			},

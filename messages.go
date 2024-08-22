@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	errInvalidAddr = errors.New("invalid address type")
+	errInvalidAddrType = errors.New("invalid address type")
 )
 
 type authRequest struct {
@@ -114,7 +114,7 @@ func (c *commandRequest) ReadFrom(r io.Reader) (n int64, err error) {
 		}
 		n++
 	default:
-		return n, errInvalidAddr
+		return n, errInvalidAddrType
 	}
 
 	c.addr = make([]byte, size)
@@ -143,7 +143,7 @@ func (c *commandRequest) validate() error {
 	switch c.addressType {
 	case ipv4, ipv6, domainName:
 	default:
-		return fmt.Errorf("invalid command.addressType: %d", c.addressType)
+		return fmt.Errorf("%w: %d", errInvalidAddrType, c.addressType)
 	}
 
 	if len(c.addr) == 0 || (c.addressType == ipv4 && len(c.addr) != net.IPv4len) || (c.addressType == ipv6 && len(c.addr) != net.IPv6len) {
@@ -191,12 +191,12 @@ func (r commandReply) WriteTo(w io.Writer) (n int64, err error) {
 	case ipv4:
 		size = net.IPv4len
 		if int(size) != len(r.addr) {
-			return n, errInvalidAddr
+			return n, errInvalidAddrType
 		}
 	case ipv6:
 		size = net.IPv6len
 		if int(size) != len(r.addr) {
-			return n, errInvalidAddr
+			return n, errInvalidAddrType
 		}
 	case domainName:
 		size = uint8(len(r.addr))
@@ -205,7 +205,7 @@ func (r commandReply) WriteTo(w io.Writer) (n int64, err error) {
 		}
 		n++
 	default:
-		return n, errInvalidAddr
+		return n, errInvalidAddrType
 	}
 
 	if _, err = w.Write(r.addr[:size]); err != nil {

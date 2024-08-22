@@ -99,8 +99,8 @@ type state struct {
 
 	conn    io.ReadWriteCloser // client connection
 	methods []authMethod       // proposed authenticate methods by client
-	method  authHandler        // accepted authenticate method (handler)
-	command commandRequest     // clients command to socks5 server
+	method  authHandler        // chosen authenticate method (handler)
+	command commandRequest     // clients validated command to socks5 server
 	status  commandStatus      // server reply/result on command
 }
 
@@ -169,6 +169,11 @@ func getCommand(state *state) (transition, error) {
 	var msg commandRequest
 
 	if _, err := msg.ReadFrom(state.conn); err != nil {
+		// ReadFrom can return errInvalidAddrType:
+		// we stop reading tcp input stream when encounter invalid address type,
+		// because don't know how to parse payload.
+		// that's why we need to close connection (return nil transition).
+
 		return nil, fmt.Errorf("sock read: %w", err)
 	}
 	if err := msg.validate(); err != nil {
@@ -238,11 +243,6 @@ func runConnect(state *state) (transition, error) {
 		}
 
 		return failCommand, err
-	}
-
-	// configure tcp conn
-	if tcpConn, ok := conn.(*net.TCPConn); ok {
-		_ = tcpConn.SetLinger(0)
 	}
 
 	reply := commandReply{
