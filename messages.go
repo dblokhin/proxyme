@@ -146,12 +146,6 @@ func (c *commandRequest) validate() error {
 		return fmt.Errorf("invalid command.addressType: %d", c.addressType)
 	}
 
-	switch c.commandType {
-	case connect, bind, udpAssoc:
-	default:
-		return fmt.Errorf("invalid command: %d", c.addressType)
-	}
-
 	if len(c.addr) == 0 || (c.addressType == ipv4 && len(c.addr) != net.IPv4len) || (c.addressType == ipv6 && len(c.addr) != net.IPv6len) {
 		return fmt.Errorf("invalid addr: %d %q", c.addressType, string(c.addr))
 	}

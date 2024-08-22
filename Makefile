@@ -14,7 +14,7 @@ run:
 	$(GO) run ./cmd/main.go
 
 test:
-	$(GOTEST) -count=1 ./...
+	$(GOTEST) -cover -count=1 ./...
 
 clean:
 	$(GOCLEAN)

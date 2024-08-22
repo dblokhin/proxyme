@@ -181,19 +181,27 @@ func getCommand(state *state) (transition, error) {
 	case connect:
 		return runConnect, nil
 	case bind:
-		if len(state.opts.bindIP) == 0 {
-			state.status = notAllowed
-			return failCommand, nil
-		}
 		return runBind, nil
 	case udpAssoc:
-		state.status = notSupported
-		return failCommand, nil
+		return runUDPAssoc, nil
 
 	default:
 		state.status = notSupported
 		return failCommand, fmt.Errorf("unsupported command: %d", msg.commandType)
 	}
+}
+
+func runBind(state *state) (transition, error) {
+	if len(state.opts.bindIP) == 0 {
+		state.status = notAllowed
+		return failCommand, nil
+	}
+	return runBindBack, nil
+}
+
+func runUDPAssoc(state *state) (transition, error) {
+	state.status = notSupported
+	return failCommand, nil
 }
 
 func runConnect(state *state) (transition, error) {
@@ -270,7 +278,7 @@ func failCommand(state *state) (transition, error) {
 	return getCommand, nil
 }
 
-func runBind(state *state) (transition, error) {
+func runBindBack(state *state) (transition, error) {
 	// todo move it to hook like connect, elimination bindIP
 	ls, err := net.Listen("tcp", fmt.Sprintf("%s:0", state.opts.bindIP))
 	if err != nil {

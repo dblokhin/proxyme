@@ -419,24 +419,6 @@ func Test_commandRequest_validate(t *testing.T) {
 			},
 		},
 		{
-			name: "invalid command",
-			fields: fields{
-				version:     protoVersion,
-				commandType: 100,
-				rsv:         0,
-				addressType: ipv4,
-				addr:        ip,
-				port:        1080,
-			},
-			check: func(err error) error {
-				if err != nil {
-					return nil
-				}
-
-				return fmt.Errorf("got nil, want invalid command error")
-			},
-		},
-		{
 			name: "invalid rsv",
 			fields: fields{
 				version:     protoVersion,

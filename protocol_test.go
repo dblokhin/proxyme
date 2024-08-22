@@ -1,9 +1,11 @@
 package proxyme
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"reflect"
 	"testing"
 )
@@ -364,7 +366,6 @@ func Test_authenticate(t *testing.T) {
 				if t != nil {
 					return fmt.Errorf("expected nil transition")
 				}
-
 				return nil
 			},
 		},
@@ -404,6 +405,124 @@ func Test_authenticate(t *testing.T) {
 			got, err := authenticate(tt.args.state)
 			if err := tt.check(tt.args.state, got, err); err != nil {
 				t.Errorf("authenticate() error = %v", err)
+				return
+			}
+		})
+	}
+}
+
+func Test_getCommand(t *testing.T) {
+	port := byte(0x77)
+	ip4 := net.ParseIP("192.168.0.1").To4()
+	validConnect := bytes.NewReader([]byte{protoVersion, byte(connect), 0x00, 0x01, ip4[0], ip4[1], ip4[2], ip4[3], 0x00, port})
+	invalidConnect := bytes.NewReader([]byte{protoVersion + 100, byte(connect), 0x00, 0x01, ip4[0], ip4[1], ip4[2], ip4[3], 0x00, port})
+	unsupportedCommand := bytes.NewReader([]byte{protoVersion, byte(0x22), 0x00, 0x01, ip4[0], ip4[1], ip4[2], ip4[3], 0x00, port})
+
+	type args struct {
+		state *state
+	}
+	tests := []struct {
+		name  string
+		args  args
+		check func(*state, transition, error) error
+	}{
+		{
+			name: "common command",
+			args: args{
+				state: &state{
+					conn: fakeRWCloser{
+						fnRead: func(p []byte) (n int, err error) {
+							return validConnect.Read(p)
+						},
+					},
+				},
+			},
+			check: func(s *state, t transition, err error) error {
+				if err != nil {
+					return fmt.Errorf("unexpected error: %v", err)
+				}
+				if t == nil {
+					return fmt.Errorf("transition must be non nil")
+				}
+				if s.command.commandType != connect {
+					return fmt.Errorf("got command type %d, want %d", s.command, connect)
+				}
+				return nil
+			},
+		},
+		{
+			name: "unsupported command type",
+			args: args{
+				state: &state{
+					conn: fakeRWCloser{
+						fnRead: func(p []byte) (n int, err error) {
+							return unsupportedCommand.Read(p)
+						},
+					},
+				},
+			},
+			check: func(s *state, t transition, err error) error {
+				if err == nil {
+					return fmt.Errorf("expected error but got nil")
+				}
+				fmt.Println(s.command)
+				if s.status != notSupported {
+					return fmt.Errorf("got command status %d, want %d", s.status, notSupported)
+				}
+				if t == nil {
+					return fmt.Errorf("transition must be non nil")
+				}
+				return nil
+			},
+		},
+		{
+			name: "invalid command payload",
+			args: args{
+				state: &state{
+					conn: fakeRWCloser{
+						fnRead: func(p []byte) (n int, err error) {
+							return invalidConnect.Read(p)
+						},
+					},
+				},
+			},
+			check: func(s *state, t transition, err error) error {
+				if err == nil {
+					return fmt.Errorf("expected error but got nil")
+				}
+				if t != nil {
+					return fmt.Errorf("expected nil transition")
+				}
+				return nil
+			},
+		},
+		{
+			name: "network error",
+			args: args{
+				state: &state{
+					conn: fakeRWCloser{
+						fnRead: func(p []byte) (n int, err error) {
+							return 0, io.ErrUnexpectedEOF
+						},
+					},
+				},
+			},
+			check: func(s *state, t transition, err error) error {
+				if !errors.Is(err, io.ErrUnexpectedEOF) {
+					return fmt.Errorf("got error %v, want %v", err, io.ErrUnexpectedEOF)
+				}
+				if t != nil {
+					return fmt.Errorf("expected nil transition")
+				}
+				return nil
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := getCommand(tt.args.state)
+			if err := tt.check(tt.args.state, got, err); err != nil {
+				t.Errorf("getCommand() error = %v", err)
 				return
 			}
 		})
