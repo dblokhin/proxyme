@@ -143,11 +143,11 @@ func getOpts() (proxyme.Options, error) {
 	}
 
 	opts := proxyme.Options{
-		BindIP:       net.ParseIP(bindIP),
 		AllowNoAuth:  noauth,
 		Authenticate: authenticate,
 		//GSSAPI:       nil,
 		//Connect:      nil,
+		BindIP: net.ParseIP(bindIP),
 	}
 
 	return opts, nil

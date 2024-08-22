@@ -9,7 +9,6 @@ import (
 	"net"
 	"os"
 	"strconv"
-	"sync"
 	"syscall"
 	"time"
 )
@@ -159,7 +158,7 @@ func authenticate(state *state) (transition, error) {
 	}
 
 	// Hijacks client conn (reason: protocol flow might consider encapsulation).
-	// For example GSSAPI encapsulates the traffic intro gssapi protocol messagestate.opts.
+	// For example GSSAPI encapsulates the traffic intro gssapi protocol messages.
 	// Package user can encapsulate traffic into whatever he wants using Connect method.
 	state.conn = conn
 
@@ -233,12 +232,9 @@ func runConnect(state *state) (transition, error) {
 		return failCommand, err
 	}
 
-	// limited timeouts
+	// configure tcp conn
 	if tcpConn, ok := conn.(*net.TCPConn); ok {
-		conn = &tcpConnWithTimeout{
-			TCPConn: tcpConn,
-			timeout: state.opts.timeout,
-		}
+		_ = tcpConn.SetLinger(0)
 	}
 
 	reply := commandReply{
@@ -366,20 +362,11 @@ func defaultDomainResolver(ctx context.Context, domain []byte) (net.IP, error) {
 
 // nolint
 func link(dst, src io.ReadWriteCloser) {
-	var once sync.Once
-
-	stop := func() {
-		once.Do(func() {
-			_ = src.Close() // nolint
-			_ = dst.Close() // nolint
-		})
-	}
-
 	go func() {
-		defer stop()
-		_, _ = io.Copy(dst, src) // nolint
+		_, _ = io.Copy(dst, src)
+		_ = dst.Close()
 	}()
 
-	defer stop()
-	_, _ = io.Copy(src, dst) // nolint
+	_, _ = io.Copy(src, dst)
+	_ = src.Close()
 }

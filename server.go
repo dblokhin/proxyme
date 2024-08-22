@@ -71,12 +71,6 @@ type GSSAPI interface {
 }
 
 type Options struct {
-	// BindIP is public server interface (IP v4/v6) for protocol BIND operation:
-	// incoming traffic from outside to client sock.
-	// If not specified (nil) the socks5 BIND operation will be disabled.
-	// OPTIONAL.
-	BindIP net.IP
-
 	// AllowNoAuth enables "NO AUTHENTICATION REQUIRED" authentication method
 	// OPTIONAL, default disabled.
 	AllowNoAuth bool
@@ -92,6 +86,11 @@ type Options struct {
 	// OPTIONAL, default disabled.
 	GSSAPI func() (GSSAPI, error)
 
+	// Resolver resolves domain name (SOCKS5 domain address type).
+	// If not specified, default resolver will be used.
+	// OPTIONAL, default go DNS resolver with lru cache.
+	Resolver func(ctx context.Context, host []byte) (net.IP, error)
+
 	// Connect establishes tcp sock connection to remote server, addr is host:port string.
 	// If not specified, default dialer will be used that just net.Dial to remote server.
 	// Use specific Connect to create custom tunnels to remote server.
@@ -100,21 +99,22 @@ type Options struct {
 	// OPTIONAL, default net.Dial.
 	Connect func(ctx context.Context, addr string) (io.ReadWriteCloser, error)
 
-	// Resolver resolves domain name (SOCKS5 domain address type).
-	// If not specified, default resolver will be used.
-	// OPTIONAL, default go DNS resolver with lru cache.
-	Resolver func(ctx context.Context, host []byte) (net.IP, error)
+	// BindIP is public server interface (IP v4/v6) for protocol BIND operation:
+	// incoming traffic from outside to client sock.
+	// If not specified (nil) the socks5 BIND operation will be disabled.
+	// OPTIONAL.
+	BindIP net.IP
 
-	// Timeout defines timeout for inactive tcp connections.
-	// OPTIONAL, default 30 seconds.
-	Timeout time.Duration
+	// MaxConnIdle defines maximum duration for inactive tcp connections.
+	// OPTIONAL, default 3 minutes.
+	MaxConnIdle time.Duration
 }
 
 type Server struct {
-	protocol socks5
-	done     chan any
-	once     *sync.Once
-	timeout  time.Duration
+	protocol    socks5
+	done        chan any
+	once        *sync.Once
+	maxConnIdle time.Duration
 }
 
 // New returns new socks5 proxyme server
@@ -155,10 +155,10 @@ func New(opts Options) (Server, error) {
 		resolverFn = defaultDomainResolver
 	}
 
-	// setup network timeout
-	timeout := 30 * time.Second // default value
-	if opts.Timeout > 0 {
-		timeout = opts.Timeout
+	// setup network maxConnIdle
+	maxConnIdle := 3 * time.Minute // default value
+	if opts.MaxConnIdle > 0 {
+		maxConnIdle = opts.MaxConnIdle
 	}
 
 	return Server{
@@ -167,11 +167,11 @@ func New(opts Options) (Server, error) {
 			bindIP:        opts.BindIP,
 			connect:       connectFn,
 			resolveDomain: resolverFn,
-			timeout:       timeout,
+			timeout:       maxConnIdle,
 		},
-		done:    make(chan any),
-		once:    new(sync.Once),
-		timeout: timeout,
+		done:        make(chan any),
+		once:        new(sync.Once),
+		maxConnIdle: maxConnIdle,
 	}, nil
 }
 
@@ -207,13 +207,11 @@ func (s Server) ListenAndServe(network, addr string) error {
 // handle handles new client connection, starts socks5 protocol negation
 func (s Server) handle(conn *net.TCPConn) {
 	defer conn.Close() // nolint
-
-	_ = conn.SetKeepAlive(false)
 	_ = conn.SetLinger(0)
 
 	var client io.ReadWriteCloser = tcpConnWithTimeout{
 		TCPConn: conn,
-		timeout: s.timeout,
+		timeout: s.maxConnIdle,
 	}
 
 	state := state{
