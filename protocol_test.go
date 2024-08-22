@@ -26,7 +26,20 @@ func (f fakeRWCloser) Close() error {
 	return f.fnClose()
 }
 
-func Test_socks5_errAuthState(t *testing.T) {
+type fakeAuth struct {
+	fnMethod func() authMethod
+	fnAuth   func(conn io.ReadWriteCloser) (io.ReadWriteCloser, error)
+}
+
+func (f fakeAuth) method() authMethod {
+	return f.fnMethod()
+}
+
+func (f fakeAuth) auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) {
+	return f.fnAuth(conn)
+}
+
+func Test_failAuth(t *testing.T) {
 	type args struct {
 		state *state
 	}
@@ -245,6 +258,152 @@ func Test_initial(t *testing.T) {
 			got, err := initial(tt.args.state)
 			if err := tt.check(tt.args.state, got, err); err != nil {
 				t.Errorf("initial() error = %v", err)
+				return
+			}
+		})
+	}
+}
+
+func Test_authenticate(t *testing.T) {
+	hijacked := &fakeRWCloser{}
+
+	type args struct {
+		state *state
+	}
+	tests := []struct {
+		name  string
+		args  args
+		check func(*state, transition, error) error
+	}{
+		{
+			name: "common noauth flow",
+			args: args{
+				state: &state{
+					conn: fakeRWCloser{
+						fnWrite: func(p []byte) (n int, err error) {
+							return len(p), nil
+						},
+					},
+					method: fakeAuth{
+						fnMethod: func() authMethod {
+							return typeNoAuth
+						},
+						fnAuth: func(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) {
+							return conn, nil
+						},
+					},
+				},
+			},
+			check: func(s *state, t transition, err error) error {
+				if err != nil {
+					return fmt.Errorf("unexpected error: %v", err)
+				}
+				if t == nil {
+					return fmt.Errorf("got nil transition")
+				}
+
+				return nil
+			},
+		},
+		{
+			name: "check hijack connection",
+			args: args{
+				state: &state{
+					conn: fakeRWCloser{
+						fnWrite: func(p []byte) (n int, err error) {
+							return len(p), nil
+						},
+					},
+					method: fakeAuth{
+						fnMethod: func() authMethod {
+							return typeNoAuth
+						},
+						fnAuth: func(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) {
+							return hijacked, nil
+						},
+					},
+				},
+			},
+			check: func(s *state, t transition, err error) error {
+				if err != nil {
+					return fmt.Errorf("unexpected error: %v", err)
+				}
+				if t == nil {
+					return fmt.Errorf("got nil transition")
+				}
+				if s.conn != hijacked {
+					return fmt.Errorf("conn is not hijacked")
+				}
+
+				return nil
+			},
+		},
+		{
+			name: "auth error",
+			args: args{
+				state: &state{
+					conn: fakeRWCloser{
+						fnWrite: func(p []byte) (n int, err error) {
+							return len(p), nil
+						},
+					},
+					method: fakeAuth{
+						fnMethod: func() authMethod {
+							return typeGSSAPI
+						},
+						fnAuth: func(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) {
+							return conn, errors.ErrUnsupported
+						},
+					},
+				},
+			},
+			check: func(s *state, t transition, err error) error {
+				if !errors.Is(err, errors.ErrUnsupported) {
+					return fmt.Errorf("got error %v, want %v", err, errors.ErrUnsupported)
+				}
+				if t != nil {
+					return fmt.Errorf("expected nil transition")
+				}
+
+				return nil
+			},
+		},
+		{
+			name: "network error",
+			args: args{
+				state: &state{
+					conn: fakeRWCloser{
+						fnWrite: func(p []byte) (n int, err error) {
+							return 0, io.ErrUnexpectedEOF
+						},
+					},
+					method: fakeAuth{
+						fnMethod: func() authMethod {
+							return typeNoAuth
+						},
+						fnAuth: func(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) {
+							return conn, nil
+						},
+					},
+				},
+			},
+			check: func(s *state, t transition, err error) error {
+				if !errors.Is(err, io.ErrUnexpectedEOF) {
+					return fmt.Errorf("got error %v, want %v", err, io.ErrUnexpectedEOF)
+				}
+				if t != nil {
+					return fmt.Errorf("expected nil transition")
+				}
+
+				return nil
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := authenticate(tt.args.state)
+			if err := tt.check(tt.args.state, got, err); err != nil {
+				t.Errorf("authenticate() error = %v", err)
 				return
 			}
 		})
