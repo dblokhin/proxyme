@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
 	"net"
 	"os"
 	"strconv"
@@ -16,6 +15,7 @@ import (
 var (
 	ErrHostUnreachable    = errors.New("host unreachable")
 	ErrNetworkUnreachable = errors.New("network unreachable")
+	ErrNotAllowed         = errors.New("not allowed by ruleset")
 	ErrConnectionRefused  = errors.New("connection refused")
 	ErrTTLExpired         = errors.New("ttl expired")
 )
@@ -71,26 +71,10 @@ const (
 
 // socks5 implements socks5 protocol.
 type socks5 struct {
-	authMethods   map[authMethod]authHandler
-	bindIP        net.IP // external address for BIND command
-	connect       func(ctx context.Context, addr string) (io.ReadWriteCloser, error)
-	resolveDomain func(ctx context.Context, domain []byte) (net.IP, error)
-	timeout       time.Duration
-}
-
-// resolveHost parses command request and returns host IP (resolves IP if needed).
-func (s socks5) resolveHost(ctx context.Context, msg commandRequest) (net.IP, error) {
-	if msg.addressType != domainName {
-		return msg.addr, nil
-	}
-
-	// domain name: dns resolve
-	ip, err := s.resolveDomain(ctx, msg.addr)
-	if err != nil {
-		return nil, fmt.Errorf("resolve domain: %w", err)
-	}
-
-	return ip, nil
+	authMethods map[authMethod]authHandler
+	bindIP      net.IP // external address for BIND command
+	connect     func(ctx context.Context, addressType int, addr []byte, port string) (io.ReadWriteCloser, error)
+	timeout     time.Duration
 }
 
 // state is state through the SOCKS5 protocol negotiations.
@@ -214,23 +198,16 @@ func runConnect(state *state) (transition, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), state.opts.timeout)
 	defer cancel()
 
-	// make connect addr
-	ip, err := state.opts.resolveHost(ctx, state.command)
-	if err != nil {
-		var addrErr *net.AddrError
-		if errors.As(err, &addrErr) {
-			state.status = addressNotSupported
-			return failCommand, err
-		}
-		state.status = hostUnreachable
-		return failCommand, err
-	}
-
 	// connect
-	addr := net.JoinHostPort(ip.String(), strconv.Itoa(int(state.command.port)))
-	conn, err := state.opts.connect(ctx, addr)
+	addrType := int(state.command.addressType) //nolint
+	addr := state.command.addr
+	port := strconv.Itoa(int(state.command.port))
+
+	conn, err := state.opts.connect(ctx, addrType, addr, port)
 	if err != nil {
 		switch {
+		case errors.Is(err, ErrNotAllowed):
+			state.status = notAllowed
 		case errors.Is(err, ErrHostUnreachable):
 			state.status = hostUnreachable
 		case errors.Is(err, ErrConnectionRefused):
@@ -240,7 +217,7 @@ func runConnect(state *state) (transition, error) {
 		case errors.Is(err, ErrTTLExpired):
 			state.status = ttlExpired
 		default:
-			state.status = hostUnreachable
+			state.status = sockFailure
 		}
 
 		return failCommand, err
@@ -324,13 +301,12 @@ func runBindBack(state *state) (transition, error) {
 	return nil, nil
 }
 
-func defaultConnect(ctx context.Context, addr string) (io.ReadWriteCloser, error) {
-	if len(addr) == 0 {
-		return nil, fmt.Errorf("invalid addr: %q", addr)
-	}
+func defaultConnect(ctx context.Context, addressType int, addr []byte, port string) (io.ReadWriteCloser, error) {
+	// make connection string for net.Dial
+	address := buildDialAddress(addressType, addr, port)
 
-	d := net.Dialer{KeepAlive: -1}
-	conn, err := d.DialContext(ctx, "tcp", addr)
+	d := net.Dialer{}
+	conn, err := d.DialContext(ctx, "tcp", address)
 	if err != nil {
 		if errors.Is(err, syscall.EHOSTUNREACH) {
 			return conn, fmt.Errorf("%w: %v", ErrHostUnreachable, err)
@@ -347,26 +323,21 @@ func defaultConnect(ctx context.Context, addr string) (io.ReadWriteCloser, error
 		return conn, err
 	}
 
-	_ = conn.(*net.TCPConn).SetKeepAlive(false) // nolint
-	_ = conn.(*net.TCPConn).SetLinger(0)        // nolint
+	_ = conn.(*net.TCPConn).SetLinger(0) // nolint
 
 	return conn, nil
 }
 
-func defaultDomainResolver(ctx context.Context, domain []byte) (net.IP, error) {
-	ips, err := defaultResolver.LookupIP(ctx, "ip", string(domain))
-	if err != nil {
-		return nil, err
+// buildDialAddress returns address in net.Dial format from socks5 details.
+func buildDialAddress(addressType int, addr []byte, port string) string {
+	var host string
+	if addressType != int(domainName) {
+		host = net.IP(addr).String()
+	} else {
+		host = string(addr)
 	}
 
-	// ipv4 priority
-	for _, ip := range ips {
-		if len(ip) == net.IPv4len {
-			return ip, nil
-		}
-	}
-
-	return ips[rand.Intn(len(ips))], nil // nolint
+	return net.JoinHostPort(host, port)
 }
 
 // nolint

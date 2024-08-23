@@ -87,18 +87,28 @@ type Options struct {
 	// OPTIONAL, default disabled.
 	GSSAPI func() (GSSAPI, error)
 
-	// Resolver resolves domain name (SOCKS5 domain address type).
-	// If not specified, default resolver will be used.
-	// OPTIONAL, default go DNS resolver with lru cache.
-	Resolver func(ctx context.Context, host []byte) (net.IP, error)
-
-	// Connect establishes tcp sock connection to remote server, addr is host:port string.
-	// If not specified, default dialer will be used that just net.Dial to remote server.
-	// Use specific Connect to create custom tunnels to remote server.
-	// Connect SHOULD return one the following errors: ErrHostUnreachable, ErrNetworkUnreachable,
-	// ErrConnectionRefused, ErrTTLExpired.
-	// OPTIONAL, default net.Dial.
-	Connect func(ctx context.Context, addr string) (io.ReadWriteCloser, error)
+	// Connect establishes tcp sock connection to remote server.
+	// If not specified, default connect will be used that just use net.Dial to remote server.
+	//
+	// Use specific Connect to create custom dns resolvers, specific connections to remote server.
+	//
+	// Connect SHOULD return one the following errors: ErrNotAllowed, ErrHostUnreachable, ErrNetworkUnreachable,
+	// ErrConnectionRefused, ErrTTLExpired. According to this errors Server responds corresponding reply status:
+	//  o  X'00' succeeded  <- Connect returns no errors
+	//  o  X'01' general SOCKS server failure <- Connect returns other errors
+	//  o  X'02' connection not allowed by ruleset
+	//  o  X'03' Network unreachable
+	//  o  X'04' Host unreachable
+	//  o  X'05' Connection refused
+	//  o  X'06' TTL expired
+	//
+	// addressType here is type of addr in terms of SOCKS5 RFC1928:
+	// o  ATYP   address type of following address
+	//    o  IP V4 address: X'01' -> addr contains net.IP
+	//    o  DOMAINNAME: X'03'    -> addr contains domain name
+	//    o  IP V6 address: X'04' -> addr contains net.IP
+	// OPTIONAL
+	Connect func(ctx context.Context, addressType int, addr []byte, port string) (io.ReadWriteCloser, error)
 
 	// BindIP is public server interface (IP v4/v6) for protocol BIND operation:
 	// incoming traffic from outside to client sock.
@@ -150,12 +160,6 @@ func New(opts Options) (Server, error) {
 		connectFn = opts.Connect
 	}
 
-	// set up dns resolver
-	resolverFn := opts.Resolver
-	if resolverFn == nil {
-		resolverFn = defaultDomainResolver
-	}
-
 	// setup network maxConnIdle
 	maxConnIdle := 3 * time.Minute // default value
 	if opts.MaxConnIdle > 0 {
@@ -164,11 +168,10 @@ func New(opts Options) (Server, error) {
 
 	return Server{
 		protocol: socks5{
-			authMethods:   authMethods,
-			bindIP:        opts.BindIP,
-			connect:       connectFn,
-			resolveDomain: resolverFn,
-			timeout:       maxConnIdle,
+			authMethods: authMethods,
+			bindIP:      opts.BindIP,
+			connect:     connectFn,
+			timeout:     maxConnIdle,
 		},
 		done:        make(chan any),
 		once:        new(sync.Once),
