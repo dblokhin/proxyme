@@ -10,6 +10,7 @@ import (
 
 var (
 	errInvalidAddrType  = errors.New("invalid address type")
+	errInvalidAddr      = errors.New("invalid address")
 	errInvalidTokenSize = errors.New("invalid token size")
 )
 
@@ -31,7 +32,7 @@ func (a *authRequest) ReadFrom(r io.Reader) (n int64, err error) {
 	n++
 
 	a.methods = make([]authMethod, size)
-	for i := 0; i < int(size); i++ {
+	for i := 0; i < len(a.methods); i++ {
 		if err = binary.Read(r, binary.BigEndian, &a.methods[i]); err != nil {
 			return
 		}
@@ -119,10 +120,10 @@ func (c *commandRequest) ReadFrom(r io.Reader) (n int64, err error) {
 	}
 
 	c.addr = make([]byte, size)
-	if _, err = io.ReadFull(r, c.addr); err != nil {
-		return
+	if nn, err := io.ReadFull(r, c.addr); err != nil {
+		return n + int64(nn), err
 	}
-	n += int64(size)
+	n += int64(len(c.addr))
 
 	if err = binary.Read(r, binary.BigEndian, &c.port); err != nil {
 		return
@@ -147,7 +148,9 @@ func (c *commandRequest) validate() error {
 		return fmt.Errorf("%w: %d", errInvalidAddrType, c.addressType)
 	}
 
-	if len(c.addr) == 0 || (c.addressType == ipv4 && len(c.addr) != net.IPv4len) || (c.addressType == ipv6 && len(c.addr) != net.IPv6len) {
+	if len(c.addr) == 0 ||
+		(c.addressType == ipv4 && len(c.addr) != net.IPv4len) ||
+		(c.addressType == ipv6 && len(c.addr) != net.IPv6len) {
 		return fmt.Errorf("invalid addr: %d %q", c.addressType, string(c.addr))
 	}
 
@@ -167,40 +170,41 @@ type commandReply struct {
 }
 
 func (r commandReply) WriteTo(w io.Writer) (n int64, err error) {
+	if len(r.addr) > maxDomainSize {
+		return 0, errInvalidAddr
+	}
+
 	if err = binary.Write(w, binary.BigEndian, protoVersion); err != nil {
 		return
 	}
-	n += 1
+	n++
 
 	if err = binary.Write(w, binary.BigEndian, r.rep); err != nil {
 		return
 	}
-	n += 1
+	n++
 
 	if err = binary.Write(w, binary.BigEndian, r.rsv); err != nil {
 		return
 	}
-	n += 1
+	n++
 
 	if err = binary.Write(w, binary.BigEndian, r.addressType); err != nil {
 		return
 	}
-	n += 1
+	n++
 
-	var size uint8
 	switch r.addressType {
 	case ipv4:
-		size = net.IPv4len
-		if int(size) != len(r.addr) {
+		if len(r.addr) != net.IPv4len {
 			return n, errInvalidAddrType
 		}
 	case ipv6:
-		size = net.IPv6len
-		if int(size) != len(r.addr) {
+		if len(r.addr) != net.IPv6len {
 			return n, errInvalidAddrType
 		}
 	case domainName:
-		size = uint8(len(r.addr))
+		size := uint8(len(r.addr))
 		if err = binary.Write(w, binary.BigEndian, size); err != nil {
 			return
 		}
@@ -209,7 +213,7 @@ func (r commandReply) WriteTo(w io.Writer) (n int64, err error) {
 		return n, errInvalidAddrType
 	}
 
-	if _, err = w.Write(r.addr[:size]); err != nil {
+	if _, err = w.Write(r.addr); err != nil {
 		return
 	}
 	n += int64(len(r.addr))
@@ -245,7 +249,7 @@ func (r *loginRequest) ReadFrom(reader io.Reader) (n int64, err error) {
 	if _, err = io.ReadFull(reader, r.username); err != nil {
 		return
 	}
-	n += int64(size)
+	n += int64(size) //nolint
 
 	if err = binary.Read(reader, binary.BigEndian, &size); err != nil {
 		return
@@ -256,7 +260,7 @@ func (r *loginRequest) ReadFrom(reader io.Reader) (n int64, err error) {
 	if _, err = io.ReadFull(reader, r.password); err != nil {
 		return
 	}
-	n += int64(size)
+	n += int64(size) //nolint
 
 	return
 }
@@ -296,7 +300,10 @@ func (l loginReply) WriteTo(w io.Writer) (n int64, err error) {
 	return
 }
 
-const maxTokenSize = 1<<16 - 1
+const (
+	maxTokenSize  = 1<<16 - 1
+	maxDomainSize = 1<<8 - 1
+)
 
 // gssapiMessage server/client message
 type gssapiMessage struct {
@@ -320,6 +327,7 @@ func (m *gssapiMessage) WriteTo(w io.Writer) (n int64, err error) {
 	}
 	n++
 
+	// nolint
 	if err = binary.Write(w, binary.BigEndian, uint16(len(m.token))); err != nil {
 		return
 	}

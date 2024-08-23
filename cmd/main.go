@@ -6,7 +6,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"github.com/dblokhin/proxyme"
 	"log"
 	"net"
 	"os"
@@ -16,9 +15,9 @@ import (
 	"strings"
 	"sync"
 	"syscall"
-)
 
-import _ "net/http/pprof"
+	"github.com/dblokhin/proxyme"
+)
 
 const (
 	maxUsersTotal = 1024 // limit the number of pairs user/password
@@ -70,7 +69,7 @@ func getPort() (int, error) {
 	const defaultPort = "1080"
 
 	port := defaultPort
-	if p := os.Getenv(envPort); len(p) > 0 {
+	if p := os.Getenv(envPort); p != "" {
 		port = p
 	}
 
@@ -82,6 +81,7 @@ func getPort() (int, error) {
 	return n, nil
 }
 
+// nolint
 func getOpts() (proxyme.Options, error) {
 	// Examples:
 	// PROXY_BIND_IP=x.x.x.x
@@ -90,7 +90,7 @@ func getOpts() (proxyme.Options, error) {
 
 	// env PROXY_BIND_IP enables socks5 BIND operations
 	bindIP := os.Getenv(envBindIP)
-	if len(bindIP) > 0 && net.ParseIP(bindIP) == nil {
+	if bindIP != "" && net.ParseIP(bindIP) == nil {
 		return proxyme.Options{}, fmt.Errorf("failed to configure proxy: invalid bind IP: %q", bindIP)
 	}
 
@@ -106,7 +106,7 @@ func getOpts() (proxyme.Options, error) {
 
 	// env PROXY_USERS=user:pass enables username/password method of socks5 authentication flow
 	for _, cred := range strings.Split(os.Getenv(envUsers), ",") {
-		if len(cred) == 0 {
+		if cred == "" {
 			continue
 		}
 
@@ -115,7 +115,7 @@ func getOpts() (proxyme.Options, error) {
 			return proxyme.Options{}, fmt.Errorf("failed to add users: invalid user/pass string %q", cred)
 		}
 
-		if len(parts[0]) == 0 || len(parts[1]) == 0 {
+		if parts[0] == "" || parts[1] == "" {
 			return proxyme.Options{}, fmt.Errorf("failed to add users: user/password must be a non empty string: %q", cred)
 		}
 

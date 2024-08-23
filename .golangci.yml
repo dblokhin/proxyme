@@ -1,0 +1,70 @@
+linters:
+  disable-all: true
+  enable:
+    - gosec
+    - gocritic
+    - gocyclo
+    - gofmt
+    - govet
+    - goimports
+    - copyloopvar
+    - dogsled
+    - dupl
+    - errcheck
+    - funlen
+    - gocheckcompilerdirectives
+    - gochecknoinits
+    - goconst
+    - goprintffuncname
+    - gosimple
+    - ineffassign
+    - lll
+    - noctx
+    - revive
+    - staticcheck
+    - stylecheck
+    - unconvert
+    - unparam
+    - unused
+issues:
+#  exclude:
+#    - "shadow: declaration of"
+  exclude-rules:
+    - path: (.+)_test\.go
+      linters:
+        - wsl
+        - copyloopvar
+        - depguard
+        - dogsled
+        - dupl
+        - errcheck
+        - funlen
+        - gocheckcompilerdirectives
+        - gochecknoinits
+        - goconst
+        - gocritic
+        - gocyclo
+        - godox
+        - gofmt
+        - goimports
+        - mnd
+        - goprintffuncname
+        - gosec
+        - gosimple
+        - govet
+        - intrange
+        - ineffassign
+        - lll
+        - misspell
+        - noctx
+        - revive
+        - staticcheck
+        - stylecheck
+        - testifylint
+        - unconvert
+        - unparam
+        - unused
+        - whitespace
+
+run:
+  timeout: 5m

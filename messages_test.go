@@ -891,6 +891,19 @@ func Test_commandReply_WriteTo(t *testing.T) {
 				domain[2], domain[3], domain[4], domain[5], 0x00, port})),
 			wantErr: false,
 		},
+		{
+			name: "invalid domain (big size)",
+			fields: fields{
+				rep:         succeeded,
+				rsv:         0,
+				addressType: domainName,
+				addr:        make([]byte, maxDomainSize+1),
+				port:        uint16(port),
+			},
+			wantW:   nil,
+			wantN:   0,
+			wantErr: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

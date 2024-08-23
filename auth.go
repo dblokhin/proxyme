@@ -25,11 +25,11 @@ type authHandler interface {
 
 type noAuth struct{}
 
-func (n *noAuth) method() authMethod {
+func (a noAuth) method() authMethod {
 	return typeNoAuth
 }
 
-func (n *noAuth) auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) {
+func (a noAuth) auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) {
 	// no auth just returns conn itself
 	return conn, nil
 }
@@ -38,11 +38,11 @@ type usernameAuth struct {
 	authenticator func(user, pass []byte) error
 }
 
-func (l *usernameAuth) method() authMethod {
+func (a usernameAuth) method() authMethod {
 	return typeLogin
 }
 
-func (l *usernameAuth) auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) {
+func (a usernameAuth) auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) {
 	var req loginRequest
 	if _, err := req.ReadFrom(conn); err != nil {
 		return conn, fmt.Errorf("sock read: %w", err)
@@ -53,7 +53,7 @@ func (l *usernameAuth) auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error)
 	}
 
 	resp := loginReply{success}
-	err := l.authenticator(req.username, req.password)
+	err := a.authenticator(req.username, req.password)
 	if err != nil {
 		resp.status = denied
 	}
@@ -82,18 +82,37 @@ type gssapiAuth struct {
 	gssapi func() (GSSAPI, error)
 }
 
-func (g *gssapiAuth) method() authMethod {
+func (a gssapiAuth) method() authMethod {
 	return typeGSSAPI
 }
 
 // auth authenticates and returns encapsulated conn.
 // encapsulated conn MUST be non nil.
-func (g *gssapiAuth) auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) {
-	gssapi, err := g.gssapi()
+func (a gssapiAuth) auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) {
+	gssapi, err := a.gssapi()
 	if err != nil {
 		return conn, err
 	}
 
+	// authenticate state
+	if err := a.authenticate(gssapi, conn); err != nil {
+		return conn, err
+	}
+
+	// agreement message protection stage
+	if err := a.applyProtection(gssapi, conn); err != nil {
+		return conn, err
+	}
+
+	// make encapsulated conn
+	return gssConn{
+		raw:    conn,
+		gssapi: gssapi,
+		buffer: bytes.Buffer{},
+	}, nil
+}
+
+func (a gssapiAuth) authenticate(gssapi GSSAPI, conn io.ReadWriteCloser) error {
 	var msg gssapiMessage
 
 	// authenticate stage
@@ -105,11 +124,11 @@ func (g *gssapiAuth) auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) {
 
 		// 1. receive client initial token
 		if _, err := msg.ReadFrom(conn); err != nil {
-			return conn, fmt.Errorf("sock read: %w", err)
+			return fmt.Errorf("sock read: %w", err)
 		}
 
 		if err := msg.validate(gssAuthentication); err != nil {
-			return conn, err
+			return err
 		}
 
 		// 2. gss accept context
@@ -118,15 +137,15 @@ func (g *gssapiAuth) auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) {
 			// refuse the client's connection for any reason (GSS-API
 			// authentication failure or otherwise)
 			refuseMsg := []uint8{1, 0xff}
-			conn.Write(refuseMsg) // nolint
+			_, _ = conn.Write(refuseMsg) // nolint
 
-			return conn, fmt.Errorf("accept client context: %w", err)
+			return fmt.Errorf("accept client context: %w", err)
 		}
 
 		// 3. reply
 		msg.token = token
 		if _, err := msg.WriteTo(conn); err != nil {
-			return conn, fmt.Errorf("sock write: %w", err)
+			return fmt.Errorf("sock write: %w", err)
 		}
 
 		// If gss_accept_sec_context returns GSS_S_COMPLETE, then, if an
@@ -140,51 +159,51 @@ func (g *gssapiAuth) auth(conn io.ReadWriteCloser) (io.ReadWriteCloser, error) {
 		}
 	}
 
-	// agreement message protection stage
+	return nil
+}
+
+func (a gssapiAuth) applyProtection(gssapi GSSAPI, conn io.ReadWriteCloser) error {
+	var msg gssapiMessage
+
 	// 1. receive client request
 	if _, err := msg.ReadFrom(conn); err != nil {
-		return conn, fmt.Errorf("sock read: %w", err)
+		return fmt.Errorf("sock read: %w", err)
 	}
 
 	if err := msg.validate(gssProtection); err != nil {
-		return conn, err
+		return err
 	}
 
 	// 2. get payload
 	data, err := gssapi.Decode(msg.token)
 	if err != nil {
-		return conn, err
+		return err
 	}
 
 	if len(data) != 1 {
-		return conn, fmt.Errorf("client send invalid protection level")
+		return fmt.Errorf("client send invalid protection level")
 	}
 
 	// 3. adjust protection lvl and takes security
 	// context protection level which it agrees to
 	lvl, err := gssapi.AcceptProtectionLevel(data[0])
 	if err != nil {
-		return conn, err
+		return err
 	}
 
 	// 4. encode result
 	token, err := gssapi.Encode([]byte{lvl})
 	if err != nil {
-		return conn, err
+		return err
 	}
 
 	// 5. reply
 	msg.token = token
 	if _, err := msg.WriteTo(conn); err != nil {
-		return conn, fmt.Errorf("sock write: %w", err)
+		return fmt.Errorf("sock write: %w", err)
 	}
 
-	// make encapsulated conn
-	return gssConn{
-		raw:    conn,
-		gssapi: gssapi,
-		buffer: bytes.Buffer{},
-	}, nil
+	return nil
 }
 
 // gssConn is encapsulated GSSAPI connection.

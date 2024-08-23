@@ -33,6 +33,7 @@ type GSSAPI interface {
 	// If no token is returned, a zero length token should be sent by the
 	// server to signal to the client that it is ready to receive the
 	// client's request.
+	// token (input/output) must be less than 2^16 bytes
 	AcceptContext(token []byte) (complete bool, outputToken []byte, err error)
 
 	// AcceptProtectionLevel adjusts protection level.
@@ -193,7 +194,7 @@ func (s Server) ListenAndServe(network, addr string) error {
 		if err != nil {
 			var ne net.Error
 			if errors.As(err, &ne) && ne.Timeout() {
-				time.Sleep(time.Second / 5)
+				time.Sleep(time.Second / 5) // nolint
 				continue
 			}
 

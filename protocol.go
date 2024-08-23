@@ -106,6 +106,7 @@ type state struct {
 
 type transition func(*state) (transition, error)
 
+// TODO: check all behind protocol behaves just close connection
 // initial starts protocol negotiation
 func initial(state *state) (transition, error) {
 	var msg authRequest
@@ -286,11 +287,11 @@ func runBindBack(state *state) (transition, error) {
 		return failCommand, fmt.Errorf("bind: %w", err)
 	}
 
-	port := uint16(ls.Addr().(*net.TCPAddr).Port)
+	port := uint16(ls.Addr().(*net.TCPAddr).Port) //nolint
 	ip := ls.Addr().(*net.TCPAddr).IP
 
 	addrType := ipv4
-	if len(ip) != 4 {
+	if len(ip) != net.IPv4len {
 		addrType = ipv6
 	}
 
@@ -365,7 +366,7 @@ func defaultDomainResolver(ctx context.Context, domain []byte) (net.IP, error) {
 		}
 	}
 
-	return ips[rand.Intn(len(ips))], nil
+	return ips[rand.Intn(len(ips))], nil // nolint
 }
 
 // nolint
