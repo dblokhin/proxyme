@@ -102,7 +102,7 @@ type Options struct {
 	//  o  X'05' Connection refused
 	//  o  X'06' TTL expired
 	//
-	// addressType here is type of addr in terms of SOCKS5 RFC1928:
+	// addressType here is type of addr in terms of SOCKS5 RFC1928, it's guarantee that value will be on of those:
 	// o  ATYP   address type of following address
 	//    o  IP V4 address: X'01' -> addr contains net.IP
 	//    o  DOMAINNAME: X'03'    -> addr contains domain name

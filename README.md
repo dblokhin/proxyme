@@ -61,8 +61,8 @@ At least one SOCKS5 auth method (noauth or username/password) must be specified.
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/dblokhin/proxyme
-   cd proxyme
+   git clone https://github.com/dblokhin/proxyme-server
+   cd proxyme-server
    ```
 
 2. **Build the binary:**
