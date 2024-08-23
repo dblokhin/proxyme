@@ -6,7 +6,7 @@ import (
 
 // syncLRU represents a concurrent-safe Least Recently Used (LRU) cache.
 type syncLRU[K comparable, V any] struct {
-	mu    sync.RWMutex
+	mu    sync.Mutex
 	cache *lru[K, V]
 }
 
@@ -27,8 +27,8 @@ func (c *syncLRU[K, V]) Add(k K, v V) {
 
 // Get retrieves a value from the cache. If the key doesn't exist, it returns the zero value for V and false.
 func (c *syncLRU[K, V]) Get(k K) (V, bool) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	return c.cache.Get(k)
 }
