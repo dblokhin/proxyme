@@ -947,6 +947,17 @@ func Test_gssapiMessage_WriteTo(t *testing.T) {
 			wantN:   int64(len(token) + 4),
 			wantErr: false,
 		},
+		{
+			name: "invalid token size",
+			fields: fields{
+				version:     subnVersion,
+				messageType: gssAuthentication,
+				token:       make([]byte, maxTokenSize+1), // <<-- too big token
+			},
+			wantW:   nil,
+			wantN:   0,
+			wantErr: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

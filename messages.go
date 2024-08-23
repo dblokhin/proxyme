@@ -9,7 +9,8 @@ import (
 )
 
 var (
-	errInvalidAddrType = errors.New("invalid address type")
+	errInvalidAddrType  = errors.New("invalid address type")
+	errInvalidTokenSize = errors.New("invalid token size")
 )
 
 type authRequest struct {
@@ -295,6 +296,8 @@ func (l loginReply) WriteTo(w io.Writer) (n int64, err error) {
 	return
 }
 
+const maxTokenSize = 1<<16 - 1
+
 // gssapiMessage server/client message
 type gssapiMessage struct {
 	version     uint8 // MUST BE 1
@@ -303,6 +306,10 @@ type gssapiMessage struct {
 }
 
 func (m *gssapiMessage) WriteTo(w io.Writer) (n int64, err error) {
+	if len(m.token) > gssMaxTokenSize {
+		return 0, errInvalidTokenSize
+	}
+
 	if err = binary.Write(w, binary.BigEndian, subnVersion); err != nil {
 		return
 	}
@@ -312,10 +319,6 @@ func (m *gssapiMessage) WriteTo(w io.Writer) (n int64, err error) {
 		return
 	}
 	n++
-
-	if len(m.token) > gssMaxTokenSize {
-		return n, fmt.Errorf("to big token size: %d", len(m.token))
-	}
 
 	if err = binary.Write(w, binary.BigEndian, uint16(len(m.token))); err != nil {
 		return
