@@ -1,6 +1,8 @@
 package proxyme
 
-import "sync"
+import (
+	"sync"
+)
 
 // syncLRU represents a concurrent-safe Least Recently Used (LRU) cache.
 type syncLRU[K comparable, V any] struct {
@@ -68,27 +70,27 @@ func (c *lru[K, V]) Add(k K, v V) {
 	}
 
 	// key is presented in the cache
-	l := c.list[k]
-	if l != nil {
+	item := c.list[k]
+	if item != nil {
 		// update value
-		l.value = v
-		c.toFront(l)
+		item.value = v
+		c.toFront(item)
 		return
 	}
 
-	// new key/value
+	// adding new key/value
 	c.add(k, v)
 }
 
 // Get retrieves a value from the cache. If the key doesn't exist, it returns false.
 func (c *lru[K, V]) Get(k K) (V, bool) {
-	l := c.list[k]
-	if l == nil {
+	item := c.list[k]
+	if item == nil {
 		return *new(V), false
 	}
 
-	c.toFront(l)
-	return l.value, true
+	c.toFront(item)
+	return item.value, true
 }
 
 // add adds **new** key/value to **non empty** cache
@@ -115,31 +117,36 @@ func (c *lru[K, V]) add(k K, v V) {
 	// evict least recently use
 	delete(c.list, c.rear.key)
 	c.rear = c.rear.next
+	c.rear.prev = nil
 }
 
 // toFront moves existing elem to the front & updates new value
-func (c *lru[K, V]) toFront(l *node[K, V]) {
-	if len(c.list) == 0 {
+func (c *lru[K, V]) toFront(item *node[K, V]) {
+	if len(c.list) == 0 || item == nil {
 		panic("cache must be non empty")
 	}
 
 	// if it is already in front
-	if l.next == nil {
+	if item.next == nil {
 		return
 	}
 
-	// update rear
-	if l == c.rear {
-		c.rear = l.next
-	}
-
-	prev, next := l.prev, l.next
-	l.prev, l.next = c.front, nil
-	c.front.next = l
-	c.front = l
-	next.prev = prev
+	// remove item from list
+	prev, next := item.prev, item.next
+	next.prev = prev // next is non nil
 	if prev != nil {
 		prev.next = next
+	}
+
+	// place item to front, update front
+	item.prev, item.next = c.front, nil
+	c.front.next = item
+	c.front = item
+
+	// update rear if item was rear
+	if c.rear == c.front {
+		c.rear = next // next is non nil
+		c.rear.prev = nil
 	}
 }
 
