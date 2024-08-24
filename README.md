@@ -45,64 +45,8 @@ func main() {
 }
 ```
 
-### Binary Usage: socks5 server proxyme
-#### Environment Variables
-The project supports the following environment variables to configure the proxy server:
-
-- `PROXY_HOST`: The host IP or hostname the proxy will listen on. (Default: 0.0.0.0)
-- `PROXY_PORT`: The port number the proxy will listen on. (Default: 1080)
-- `PROXY_BIND_IP`: The IP address to use for BIND operations in the SOCKS5 protocol. This should be a public IP address that can accept incoming connections. (Default: disabled)
-- `PROXY_NOAUTH`: If set to yes, true, or 1, allows unauthenticated access to the proxy. (Default: disabled)
-- `PROXY_USERS`: A comma-separated list of username and password pairs for authentication (in the format user:pass,user2:pass2). If this is set, the proxy enables SOCKS5 username/password authentication.
-
-At least one SOCKS5 auth method (noauth or username/password) must be specified.
-
-### Binary installation
-
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/dblokhin/proxyme-server
-   cd proxyme-server
-   ```
-
-2. **Build the binary:**
-   ```bash
-   make build
-   ```
-
-3. **Run the proxy:**
-   ```bash
-   PROXY_PORT=1080 PROXY_NOAUTH=yes ./proxyme # starts proxy on 0.0.0.0
-   ```
-
-4. **Check the proxy:**
-   ```bash
-   curl --socks5 localhost:1080 https://google.com
-   ```
-   
-### Docker Usage
-You can also run the socks5 proxy within a Docker container.
-
-1. **Build the Docker image:**
-   ```bash
-   docker build -t proxyme .
-   ```
-
-2. **Run the Docker container:**
-   ```bash
-   docker run -d \
-    -e PROXY_HOST=0.0.0.0 \
-    -e PROXY_PORT=1080 \
-    -e PROXY_BIND_IP=203.0.113.4 \
-    -e PROXY_NOAUTH=yes \
-    -e PROXY_USERS="user1:pass1,user2:pass2" \
-    -p 1080:1080 \
-    proxyme
-   ```
-
-   ```bash
-   curl --socks5 localhost:1080 -U user1:pass1 https://google.com
-   ```
+### Binary Usage: SOCKS5 server proxyme
+Check [this](https://github.com/dblokhin/proxyme-server) out to use socks5 server. You can pull the ready-to-use image from [Docker Hub](https://hub.docker.com/r/dblokhin/proxyme).
 
 ## Contributing
 We welcome contributions to enhance the functionality and performance of this Socks5 proxy. If you find any bugs or have feature requests, feel free to open an issue or submit a pull request.
