@@ -72,7 +72,7 @@ const (
 // socks5 implements socks5 protocol.
 type socks5 struct {
 	authMethods map[authMethod]authHandler
-	bindListen  func() (net.Listener, error) // bindListen for BIND command
+	bind        func() (net.Listener, error) // bind for BIND command
 	connect     func(ctx context.Context, addressType int, addr []byte, port string) (io.ReadWriteCloser, error)
 	timeout     time.Duration
 }
@@ -182,7 +182,7 @@ func getCommand(state *state) (transition, error) {
 }
 
 func runBind(state *state) (transition, error) {
-	if state.opts.bindListen == nil {
+	if state.opts.bind == nil {
 		state.status = notAllowed
 		return failCommand, nil
 	}
@@ -281,17 +281,17 @@ func parseAddr(addr net.Addr) (net.IP, int, error) {
 }
 
 func defaultBind(state *state) (transition, error) {
-	ls, err := state.opts.bindListen()
+	ls, err := state.opts.bind()
 	if err != nil {
 		state.status = sockFailure
-		return failCommand, fmt.Errorf("bind bindListen: %w", err)
+		return failCommand, fmt.Errorf("bind bind: %w", err)
 	}
 	defer ls.Close() // nolint
 
 	ip, port, err := parseAddr(ls.Addr())
 	if err != nil {
 		state.status = sockFailure
-		return failCommand, fmt.Errorf("bindListen addr: %w", err)
+		return failCommand, fmt.Errorf("bind addr: %w", err)
 	}
 
 	addrType := ipv4

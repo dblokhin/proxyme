@@ -110,10 +110,11 @@ type Options struct {
 	// OPTIONAL
 	Connect func(ctx context.Context, addressType int, addr []byte, port string) (io.ReadWriteCloser, error)
 
-	// Listen returns listener for protocol BIND operation: incoming traffic from outside to client sock.
+	// Bind returns listener to accept incoming connections for protocol BIND operation:
+	// incoming traffic from outside to client sock.
 	// If not specified the SOCKS5 BIND operation will be rejected with notAllowed status.
 	// OPTIONAL.
-	BindListen func() (net.Listener, error)
+	Bind func() (net.Listener, error)
 
 	// MaxConnIdle defines maximum duration for inactive tcp connections.
 	// OPTIONAL, default 3 minutes.
@@ -168,7 +169,7 @@ func New(opts Options) (Server, error) {
 	return Server{
 		protocol: socks5{
 			authMethods: authMethods,
-			bindListen:  opts.BindListen,
+			bind:        opts.Bind,
 			connect:     connectFn,
 			timeout:     maxConnIdle,
 		},
@@ -181,7 +182,7 @@ func New(opts Options) (Server, error) {
 func (s Server) ListenAndServe(network, addr string) error {
 	ls, err := net.Listen(network, addr)
 	if err != nil {
-		return fmt.Errorf("bindListen: %q", err)
+		return fmt.Errorf("bind: %q", err)
 	}
 
 	go func() {
