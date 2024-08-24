@@ -253,7 +253,12 @@ func failCommand(state *state) (transition, error) {
 		return nil, fmt.Errorf("sock write: %w", err)
 	}
 
-	return getCommand, nil
+	// When a reply (REP value other than X'00') indicates a failure, the
+	// SOCKS server MUST terminate the TCP connection shortly after sending
+	// the reply.  This must be no more than 10 seconds after detecting the
+	// condition that caused a failure.
+
+	return nil, nil
 }
 
 func runBindBack(state *state) (transition, error) {
