@@ -291,7 +291,16 @@ func runBindBack(state *state) (transition, error) {
 		return failCommand, fmt.Errorf("link accept: %w", err)
 	}
 
-	// send first reply (on connect)
+	// send second reply (on connect)
+	ip = conn.RemoteAddr().(*net.TCPAddr).IP
+	addrType = ipv4
+	if len(ip) != net.IPv4len {
+		addrType = ipv6
+	}
+
+	reply.addressType = addrType
+	reply.addr = ip
+
 	if _, err := reply.WriteTo(state.conn); err != nil {
 		return nil, fmt.Errorf("sock write: %w", err)
 	}
