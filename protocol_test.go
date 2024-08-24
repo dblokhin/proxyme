@@ -584,8 +584,8 @@ func Test_failCommand(t *testing.T) {
 					return fmt.Errorf("unexpected error: %v", err)
 				}
 
-				if t == nil {
-					return fmt.Errorf("got nil transition")
+				if t != nil {
+					return fmt.Errorf("want nil transition")
 				}
 
 				return nil

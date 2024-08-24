@@ -110,11 +110,10 @@ type Options struct {
 	// OPTIONAL
 	Connect func(ctx context.Context, addressType int, addr []byte, port string) (io.ReadWriteCloser, error)
 
-	// BindIP is public server interface (IP v4/v6) for protocol BIND operation:
-	// incoming traffic from outside to client sock.
-	// If not specified (nil) the socks5 BIND operation will be disabled.
+	// Listen returns listener for protocol BIND operation: incoming traffic from outside to client sock.
+	// If not specified the SOCKS5 BIND operation will be rejected with notAllowed status.
 	// OPTIONAL.
-	BindIP net.IP
+	BindListen func() (net.Listener, error)
 
 	// MaxConnIdle defines maximum duration for inactive tcp connections.
 	// OPTIONAL, default 3 minutes.
@@ -169,7 +168,7 @@ func New(opts Options) (Server, error) {
 	return Server{
 		protocol: socks5{
 			authMethods: authMethods,
-			bindIP:      opts.BindIP,
+			bindListen:  opts.BindListen,
 			connect:     connectFn,
 			timeout:     maxConnIdle,
 		},
@@ -182,7 +181,7 @@ func New(opts Options) (Server, error) {
 func (s Server) ListenAndServe(network, addr string) error {
 	ls, err := net.Listen(network, addr)
 	if err != nil {
-		return fmt.Errorf("listen: %q", err)
+		return fmt.Errorf("bindListen: %q", err)
 	}
 
 	go func() {

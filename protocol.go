@@ -72,7 +72,7 @@ const (
 // socks5 implements socks5 protocol.
 type socks5 struct {
 	authMethods map[authMethod]authHandler
-	bindIP      net.IP // external address for BIND command
+	bindListen  func() (net.Listener, error) // bindListen for BIND command
 	connect     func(ctx context.Context, addressType int, addr []byte, port string) (io.ReadWriteCloser, error)
 	timeout     time.Duration
 }
@@ -182,11 +182,11 @@ func getCommand(state *state) (transition, error) {
 }
 
 func runBind(state *state) (transition, error) {
-	if len(state.opts.bindIP) == 0 {
+	if state.opts.bindListen == nil {
 		state.status = notAllowed
 		return failCommand, nil
 	}
-	return runBindBack, nil
+	return defaultBind, nil
 }
 
 func runUDPAssoc(state *state) (transition, error) {
@@ -261,48 +261,75 @@ func failCommand(state *state) (transition, error) {
 	return nil, nil
 }
 
-func runBindBack(state *state) (transition, error) {
-	// todo move it to hook like connect, elimination bindIP
-	ls, err := net.Listen("tcp", fmt.Sprintf("%s:0", state.opts.bindIP))
+func parseAddr(addr net.Addr) (net.IP, int, error) {
+	host, port, err := net.SplitHostPort(addr.String())
 	if err != nil {
-		state.status = sockFailure
-		return failCommand, fmt.Errorf("bind: %w", err)
+		return nil, 0, err
 	}
 
-	port := uint16(ls.Addr().(*net.TCPAddr).Port) //nolint
-	ip := ls.Addr().(*net.TCPAddr).IP
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return nil, 0, fmt.Errorf("invalid host %q", host)
+	}
+
+	p, err := strconv.Atoi(port)
+	if err != nil || p <= 0 || p >= 1<<16 {
+		return nil, 0, fmt.Errorf("invalid port %q", port)
+	}
+
+	return ip, p, nil
+}
+
+func defaultBind(state *state) (transition, error) {
+	ls, err := state.opts.bindListen()
+	if err != nil {
+		state.status = sockFailure
+		return failCommand, fmt.Errorf("bind bindListen: %w", err)
+	}
+	defer ls.Close() // nolint
+
+	ip, port, err := parseAddr(ls.Addr())
+	if err != nil {
+		state.status = sockFailure
+		return failCommand, fmt.Errorf("bindListen addr: %w", err)
+	}
 
 	addrType := ipv4
 	if len(ip) != net.IPv4len {
 		addrType = ipv6
 	}
-
+	// send first reply
 	reply := commandReply{
 		rep:         succeeded,
 		rsv:         0,
 		addressType: addrType,
-		addr:        state.opts.bindIP,
-		port:        port,
+		addr:        ip,
+		port:        uint16(port), // nolint
 	}
 
-	// send first reply
 	if _, err := reply.WriteTo(state.conn); err != nil {
 		return nil, fmt.Errorf("sock write: %w", err)
 	}
 
+	// accept connection
 	conn, err := ls.Accept()
 	if err != nil {
 		state.status = sockFailure
-		return failCommand, fmt.Errorf("link accept: %w", err)
+		return failCommand, fmt.Errorf("bind accept: %w", err)
 	}
 
-	// send second reply (on connect)
-	ip = conn.RemoteAddr().(*net.TCPAddr).IP
+	// parse remote addr
+	ip, _, err = parseAddr(conn.RemoteAddr())
+	if err != nil {
+		state.status = sockFailure
+		return failCommand, fmt.Errorf("bind remote addr: %w", err)
+	}
+
 	addrType = ipv4
 	if len(ip) != net.IPv4len {
 		addrType = ipv6
 	}
-
+	// send second reply (on connect)
 	reply.addressType = addrType
 	reply.addr = ip
 
