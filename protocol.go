@@ -69,22 +69,22 @@ const (
 	addressNotSupported commandStatus = 8 // Address type not supported
 )
 
-// socks5 implements socks5 protocol.
-type socks5 struct {
-	authMethods map[authMethod]authHandler
-	bind        func() (net.Listener, error) // bind for BIND command
-	connect     func(ctx context.Context, addressType int, addr []byte, port string) (io.ReadWriteCloser, error)
-	timeout     time.Duration
+// SOCKS5 implements SOCKS5 protocol.
+type SOCKS5 struct {
+	auth    map[authMethod]authHandler
+	bind    func() (net.Listener, error) // bind for BIND command
+	connect func(ctx context.Context, addressType int, addr []byte, port string) (io.ReadWriteCloser, error)
+	timeout time.Duration
 }
 
 // state is state through the SOCKS5 protocol negotiations.
 type state struct {
-	opts socks5 // protocol options
+	opts SOCKS5 // protocol options
 
 	conn    io.ReadWriteCloser // client connection
 	methods []authMethod       // proposed authenticate methods by client
 	method  authHandler        // chosen authenticate method (handler)
-	command commandRequest     // clients validated command to socks5 server
+	command commandRequest     // clients validated command to SOCKS5 server
 	status  commandStatus      // server reply/result on command
 }
 
@@ -106,7 +106,7 @@ func initial(state *state) (transition, error) {
 
 	// choose auth method
 	for _, code := range state.methods {
-		if method, ok := state.opts.authMethods[code]; ok {
+		if method, ok := state.opts.auth[code]; ok {
 			state.method = method
 			return authenticate, nil
 		}
@@ -369,7 +369,7 @@ func defaultConnect(ctx context.Context, addressType int, addr []byte, port stri
 	return conn, nil
 }
 
-// buildDialAddress returns address in net.Dial format from socks5 details.
+// buildDialAddress returns address in net.Dial format from SOCKS5 details.
 func buildDialAddress(addressType int, addr []byte, port string) string {
 	var host string
 	if addressType != int(domainName) {

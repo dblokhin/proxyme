@@ -3,13 +3,12 @@ package proxyme
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"net"
-	"os"
-	"sync"
 	"time"
 )
+
+const defaultMaxConnIdle = 3 * time.Minute
 
 // GSSAPI provides contract to implement GSSAPI boilerplate.
 // Proxyme refuses client if following methods return non-nil error
@@ -121,39 +120,15 @@ type Options struct {
 	MaxConnIdle time.Duration
 }
 
-type Server struct {
-	protocol    socks5
-	done        chan any
-	once        *sync.Once
-	maxConnIdle time.Duration
-}
-
-// New returns new socks5 proxyme server
-func New(opts Options) (Server, error) {
+// New returns new SOCKS5 proxyme server
+func New(opts Options) (SOCKS5, error) {
 	// set up allowed authentication methods
-	authMethods := make(map[authMethod]authHandler)
-	if opts.AllowNoAuth {
-		// enable no authenticate method
-		authMethods[typeNoAuth] = &noAuth{}
-	}
-	if opts.Authenticate != nil {
-		// enable username/password method
-		authMethods[typeLogin] = &usernameAuth{
-			authenticator: opts.Authenticate,
-		}
-	}
-	if opts.GSSAPI != nil {
-		// enable gssapi interface
-		authMethods[typeLogin] = &gssapiAuth{
-			gssapi: opts.GSSAPI,
-		}
+	auth, err := getAuthHandlers(opts)
+	if err != nil {
+		return SOCKS5{}, err
 	}
 
-	if len(authMethods) == 0 {
-		return Server{}, errors.New("none of socks5 authenticate method are specified")
-	}
-
-	// set up connect fn for creating tunnel to remote server
+	// set up CONNECT command callback
 	connectFn := defaultConnect
 	if opts.Connect != nil {
 		// use custom fn
@@ -161,78 +136,57 @@ func New(opts Options) (Server, error) {
 	}
 
 	// setup network maxConnIdle
-	maxConnIdle := 3 * time.Minute // default value
+	maxConnIdle := defaultMaxConnIdle
 	if opts.MaxConnIdle > 0 {
 		maxConnIdle = opts.MaxConnIdle
 	}
 
-	return Server{
-		protocol: socks5{
-			authMethods: authMethods,
-			bind:        opts.Bind,
-			connect:     connectFn,
-			timeout:     maxConnIdle,
-		},
-		done:        make(chan any),
-		once:        new(sync.Once),
-		maxConnIdle: maxConnIdle,
+	return SOCKS5{
+		auth:    auth,
+		bind:    opts.Bind,
+		connect: connectFn,
+		timeout: maxConnIdle,
 	}, nil
 }
 
-func (s Server) ListenAndServe(network, addr string) error {
-	ls, err := net.Listen(network, addr)
-	if err != nil {
-		return fmt.Errorf("bind: %q", err)
+func getAuthHandlers(opts Options) (map[authMethod]authHandler, error) {
+	res := make(map[authMethod]authHandler)
+
+	if opts.AllowNoAuth {
+		// enable no authenticate method
+		res[typeNoAuth] = &noAuth{}
 	}
-
-	go func() {
-		<-s.done
-		_ = ls.Close()
-	}()
-
-	defer s.Close()
-
-	for {
-		conn, err := ls.Accept()
-		if err != nil {
-			var ne net.Error
-			if errors.As(err, &ne) && ne.Timeout() {
-				time.Sleep(time.Second / 5) // nolint
-				continue
-			}
-
-			return fmt.Errorf("accept: %w", err)
+	if opts.Authenticate != nil {
+		// enable username/password method
+		res[typeLogin] = &usernameAuth{
+			authenticator: opts.Authenticate,
 		}
-
-		go s.handle(conn.(*net.TCPConn))
 	}
+	if opts.GSSAPI != nil {
+		// enable gssapi interface
+		res[typeLogin] = &gssapiAuth{
+			gssapi: opts.GSSAPI,
+		}
+	}
+
+	if len(res) == 0 {
+		return nil, errors.New("none of SOCKS5 authenticate method are specified")
+	}
+
+	return res, nil
 }
 
-// handle handles new client connection, starts socks5 protocol negation
-func (s Server) handle(conn *net.TCPConn) {
-	defer conn.Close() // nolint
-	_ = conn.SetLinger(0)
-
-	var client io.ReadWriteCloser = tcpConnWithTimeout{
-		TCPConn: conn,
-		timeout: s.maxConnIdle,
-	}
-
+// Handle handles client connection into SOCKS5, starts SOCKS5 protocol negation.
+func (s SOCKS5) Handle(conn io.ReadWriteCloser, onError func(error)) {
 	state := state{
-		opts: s.protocol,
-		conn: client,
+		opts: s,
+		conn: conn,
 	}
-	for stage, err := initial(&state); stage != nil; {
-		if err != nil {
-			_, _ = fmt.Fprintln(os.Stderr, "proxyme:", err)
+
+	for fnState, err := initial(&state); fnState != nil; {
+		if err != nil && onError != nil {
+			onError(err)
 		}
-
-		stage, err = stage(&state)
+		fnState, err = fnState(&state)
 	}
-}
-
-func (s Server) Close() {
-	s.once.Do(func() {
-		close(s.done)
-	})
 }

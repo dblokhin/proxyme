@@ -113,8 +113,8 @@ func Test_initial(t *testing.T) {
 			name: "common auth method (noauth)",
 			args: args{
 				state: &state{
-					opts: socks5{
-						authMethods: map[authMethod]authHandler{
+					opts: SOCKS5{
+						auth: map[authMethod]authHandler{
 							typeNoAuth: &noAuth{},
 						},
 					},
@@ -159,8 +159,8 @@ func Test_initial(t *testing.T) {
 			name: "no common auth method",
 			args: args{
 				state: &state{
-					opts: socks5{
-						authMethods: map[authMethod]authHandler{
+					opts: SOCKS5{
+						auth: map[authMethod]authHandler{
 							typeNoAuth: &noAuth{},
 						},
 					},
@@ -202,7 +202,7 @@ func Test_initial(t *testing.T) {
 			name: "invalid auth request",
 			args: args{
 				state: &state{
-					opts: socks5{},
+					opts: SOCKS5{},
 					conn: fakeRWCloser{
 						fnWrite: nil,
 						fnRead: func(p []byte) (n int, err error) {
@@ -234,7 +234,7 @@ func Test_initial(t *testing.T) {
 			name: "network error",
 			args: args{
 				state: &state{
-					opts: socks5{},
+					opts: SOCKS5{},
 					conn: fakeRWCloser{
 						fnWrite: nil,
 						fnRead: func(p []byte) (n int, err error) {
