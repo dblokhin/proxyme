@@ -1,14 +1,11 @@
 package proxyme
 
 import (
-	"context"
 	"errors"
 	"io"
 	"net"
 	"time"
 )
-
-const defaultMaxConnIdle = 3 * time.Minute
 
 // GSSAPI provides contract to implement GSSAPI boilerplate.
 // Proxyme refuses client if following methods return non-nil error
@@ -90,9 +87,9 @@ type Options struct {
 
 	// Connect establishes tcp sock connection to remote server. If not specified, default connect
 	// will be used that just use net.Dial to remote server.
-	// Provided context allows for timeout and cancellation control.
 	//
-	// Use specific Connect to create custom dns resolvers, specific connections to remote server.
+	// Specify Connect to set up limits/timeouts on connections, create custom dns resolvers,
+	// specific connections to remote server.
 	//
 	// Connect SHOULD return one the following errors: ErrNotAllowed, ErrHostUnreachable, ErrNetworkUnreachable,
 	// ErrConnectionRefused, ErrTTLExpired. According to this errors Server responds corresponding reply status:
@@ -110,7 +107,7 @@ type Options struct {
 	//    o  DOMAINNAME: X'03'    -> addr contains domain name
 	//    o  IP V6 address: X'04' -> addr contains net.IP
 	// OPTIONAL
-	Connect func(ctx context.Context, addressType int, addr []byte, port string) (io.ReadWriteCloser, error)
+	Connect func(addressType int, addr []byte, port string) (io.ReadWriteCloser, error)
 
 	// Bind returns listener to accept incoming connections for protocol BIND operation:
 	// incoming traffic from outside to client sock.
@@ -166,17 +163,10 @@ func New(opts Options) (*SOCKS5, error) {
 		connectFn = opts.Connect
 	}
 
-	// setup network maxConnIdle
-	maxConnIdle := defaultMaxConnIdle
-	if opts.MaxConnIdle > 0 {
-		maxConnIdle = opts.MaxConnIdle
-	}
-
 	return &SOCKS5{
 		auth:    auth,
 		bind:    opts.Bind,
 		connect: connectFn,
-		timeout: maxConnIdle,
 	}, nil
 }
 

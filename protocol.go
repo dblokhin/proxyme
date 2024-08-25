@@ -1,7 +1,6 @@
 package proxyme
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -9,7 +8,6 @@ import (
 	"os"
 	"strconv"
 	"syscall"
-	"time"
 )
 
 var (
@@ -73,8 +71,7 @@ const (
 type SOCKS5 struct {
 	auth    map[authMethod]authHandler
 	bind    func() (net.Listener, error) // bind for BIND command
-	connect func(ctx context.Context, addressType int, addr []byte, port string) (io.ReadWriteCloser, error)
-	timeout time.Duration
+	connect func(addressType int, addr []byte, port string) (io.ReadWriteCloser, error)
 }
 
 // state is state through the SOCKS5 protocol negotiations.
@@ -195,15 +192,12 @@ func runUDPAssoc(state *state) (transition, error) {
 }
 
 func runConnect(state *state) (transition, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), state.opts.timeout)
-	defer cancel()
-
 	// connect
 	addrType := int(state.command.addressType) //nolint
 	addr := state.command.addr
 	port := strconv.Itoa(int(state.command.port))
 
-	conn, err := state.opts.connect(ctx, addrType, addr, port)
+	conn, err := state.opts.connect(addrType, addr, port)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrNotAllowed):
@@ -342,12 +336,11 @@ func defaultBind(state *state) (transition, error) {
 	return nil, nil
 }
 
-func defaultConnect(ctx context.Context, addressType int, addr []byte, port string) (io.ReadWriteCloser, error) {
+func defaultConnect(addressType int, addr []byte, port string) (io.ReadWriteCloser, error) {
 	// make connection string for net.Dial
 	address := buildDialAddress(addressType, addr, port)
 
-	d := net.Dialer{}
-	conn, err := d.DialContext(ctx, "tcp", address)
+	conn, err := net.Dial("tcp", address)
 	if err != nil {
 		if errors.Is(err, syscall.EHOSTUNREACH) {
 			return conn, fmt.Errorf("%w: %v", ErrHostUnreachable, err)
