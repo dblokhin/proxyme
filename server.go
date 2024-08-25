@@ -71,12 +71,14 @@ type GSSAPI interface {
 }
 
 type Options struct {
-	// AllowNoAuth enables "NO AUTHENTICATION REQUIRED" authentication method
+	// AllowNoAuth if set to true, enables the 'NO AUTHENTICATION REQUIRED' method,
+	// allowing clients to connect without authentication.
 	// OPTIONAL, default disabled.
 	AllowNoAuth bool
 
-	// Authenticate enables USERNAME/PASSWORD authentication method.
-	// Checks user credentials, non nil error causes DENIED status for client.
+	// Authenticate If provided, enables USERNAME/PASSWORD authentication. This function
+	// checks user credentials and returns an error if authentication fails, causing the
+	// client to receive a DENIED status.
 	// OPTIONAL, default disabled.
 	Authenticate func(username, password []byte) error
 
@@ -86,8 +88,9 @@ type Options struct {
 	// OPTIONAL, default disabled.
 	GSSAPI func() (GSSAPI, error)
 
-	// Connect establishes tcp sock connection to remote server.
-	// If not specified, default connect will be used that just use net.Dial to remote server.
+	// Connect establishes tcp sock connection to remote server. If not specified, default connect
+	// will be used that just use net.Dial to remote server.
+	// Provided context allows for timeout and cancellation control.
 	//
 	// Use specific Connect to create custom dns resolvers, specific connections to remote server.
 	//
@@ -120,12 +123,40 @@ type Options struct {
 	MaxConnIdle time.Duration
 }
 
-// New returns new SOCKS5 proxyme server
-func New(opts Options) (SOCKS5, error) {
+// New creates and returns a new object implemented the SOCKS5 protocol handler configured with the provided options.
+//
+// This function sets up the necessary components for handling the SOCKS5 protocol, including authentication methods,
+// command handlers (such as CONNECT and BIND), and connection timeout settings. The returned SOCKS5 instance is not
+// a server itself, but a protocol handler that can be used to manage SOCKS5 operations on an existing TCP connection.
+//
+// Parameters:
+//
+//	opts - Options: A struct containing configuration options for the SOCKS5 protocol handler. This includes
+//	       custom authentication methods, custom CONNECT and BIND command handlers, and connection timeout settings.
+//
+// Returns:
+//
+//	SOCKS5 - An instance of the SOCKS5 struct, configured based on the provided options. This instance is used to handle
+//	         the SOCKS5 protocol on a specific connection through its Handle method.
+//	error - An error if the SOCKS5 handler cannot be created due to invalid configuration or setup issues.
+//
+// Example:
+//
+//	opts := Options{
+//	    Connect: customConnectHandler,
+//	    Bind:    customBindHandler,
+//	    MaxConnIdle: 10 * time.Minute,
+//	}
+//	socks5, _ := proxyme.New(opts)
+//	clientConn, _ := ls.Accept()
+//	socks5.Handle(clientConn, nil)
+//
+// The returned SOCKS5 protocol object can be used to handle incoming TCP connections by calling its Handle method.
+func New(opts Options) (*SOCKS5, error) {
 	// set up allowed authentication methods
 	auth, err := getAuthHandlers(opts)
 	if err != nil {
-		return SOCKS5{}, err
+		return nil, err
 	}
 
 	// set up CONNECT command callback
@@ -141,7 +172,7 @@ func New(opts Options) (SOCKS5, error) {
 		maxConnIdle = opts.MaxConnIdle
 	}
 
-	return SOCKS5{
+	return &SOCKS5{
 		auth:    auth,
 		bind:    opts.Bind,
 		connect: connectFn,
@@ -176,7 +207,21 @@ func getAuthHandlers(opts Options) (map[authMethod]authHandler, error) {
 	return res, nil
 }
 
-// Handle handles client connection into SOCKS5, starts SOCKS5 protocol negation.
+// Handle initiates and processes the SOCKS5 protocol over the given connection.
+// This function manages all stages of the SOCKS5 protocol, including:
+//   - Initial handshake and authentication (if required).
+//   - Handling client commands, such as CONNECT, BIND, and UDP ASSOCIATE.
+//   - Establishing connections with the target server and facilitating data exchange
+//     between the client and the remote server.
+//
+// Parameters:
+//
+//	conn - io.ReadWriteCloser: The TCP connection over which the SOCKS5 protocol is handled.
+//	       The connection should be open when passed to this function and will be managed
+//	       by the protocol until completion or an error occurs.
+//	onError - func(error): A callback function that is invoked if an error occurs during
+//	         the handling of the SOCKS5 protocol. The error is passed to this function for
+//	         logging or handling purposes. Use nil here if it doesn't need.
 func (s SOCKS5) Handle(conn io.ReadWriteCloser, onError func(error)) {
 	state := state{
 		opts: s,

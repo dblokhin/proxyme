@@ -21,27 +21,27 @@ with the exception of the UDP ASSOCIATE command, which may be implemented in the
 - **BIND command**: Allows incoming connections on a specified IP and port.
 - **AUTH support**:
     - No authentication (anonymous access)
-    - Username/Password authentication 
+    - Username/Password authentication (rfc1929)
     - GSSAPI SOCKS5 protocol flow (rfc1961)
-- Custom DNS resolving.
+- Custom accept client connection
+- Custom CONNECT command (connect callback)
+- Custom BIND command (bind callback)
 
 ## Getting Started
 ### Golang package usage
 ```go
 func main() {
-    opts := proxyme.Options{
-        AllowNoAuth: true,
-    }
+	opts := Options{
+		AllowNoAuth: true,
+	}
 
-    srv, err := proxyme.New(opts)
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    // start socks5 proxy
-    if err := srv.ListenAndServe("tcp4", ":1080"); err != nil {
-        log.Println(err)
-    }
+	socks5, _ := New(opts)
+	ls, _ := net.Listen("tcp", ":1080")
+	
+	for {
+		conn, _ := ls.Accept()   	// accept new client connection
+		socks5.Handle(conn, nil) 	// run socks5 over client connection
+	}
 }
 ```
 
