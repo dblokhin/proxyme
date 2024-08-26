@@ -17,7 +17,11 @@ lint:
 	$(GO) vet ./...
 	$(BIN_DIR)/golangci-lint run ./...
 
+godoc:
+	$(BIN_DIR)/godoc -http :6060
+
 deps:
 	@curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(BIN_DIR) $(GOLANGCI_LINT_VERSION)
+	@go install -v golang.org/x/tools/cmd/godoc@latest
 
 .PHONY: test fmt lint deps
