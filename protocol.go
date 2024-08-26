@@ -71,7 +71,7 @@ const (
 type SOCKS5 struct {
 	auth    map[authMethod]authHandler
 	bind    func() (net.Listener, error) // bind for BIND command
-	connect func(addressType int, addr []byte, port string) (io.ReadWriteCloser, error)
+	connect func(addressType int, addr []byte, port string) (net.Conn, error)
 }
 
 // state is state through the SOCKS5 protocol negotiations.
@@ -217,12 +217,22 @@ func runConnect(state *state) (transition, error) {
 		return failCommand, err
 	}
 
+	bndAddr, ok := conn.LocalAddr().(*net.TCPAddr)
+	if !ok {
+		return nil, fmt.Errorf("failed to get local bnd address")
+	}
+
+	bndAddrType := ipv4
+	if len(bndAddr.IP) == net.IPv6len {
+		bndAddrType = ipv6
+	}
+
 	reply := commandReply{
 		rep:         succeeded,
 		rsv:         0,
-		addressType: state.command.addressType,
-		addr:        state.command.addr,
-		port:        state.command.port,
+		addressType: bndAddrType,
+		addr:        bndAddr.IP,
+		port:        uint16(bndAddr.Port),
 	}
 
 	if _, err := reply.WriteTo(state.conn); err != nil {
@@ -336,7 +346,7 @@ func defaultBind(state *state) (transition, error) {
 	return nil, nil
 }
 
-func defaultConnect(addressType int, addr []byte, port string) (io.ReadWriteCloser, error) {
+func defaultConnect(addressType int, addr []byte, port string) (net.Conn, error) {
 	// make connection string for net.Dial
 	address := buildDialAddress(addressType, addr, port)
 

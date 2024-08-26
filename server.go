@@ -107,7 +107,7 @@ type Options struct {
 	//    o  DOMAINNAME: X'03'    -> addr contains domain name
 	//    o  IP V6 address: X'04' -> addr contains net.IP
 	// OPTIONAL
-	Connect func(addressType int, addr []byte, port string) (io.ReadWriteCloser, error)
+	Connect func(addressType int, addr []byte, port string) (net.Conn, error)
 
 	// Bind returns listener to accept incoming connections for protocol BIND operation:
 	// incoming traffic from outside to client sock.
