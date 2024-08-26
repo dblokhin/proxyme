@@ -1,6 +1,7 @@
 # Proxyme SOCKS5 server
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/dblokhin/proxyme)](https://goreportcard.com/report/github.com/dblokhin/proxyme)
+[![GoDoc](https://godoc.org/github.com/dblokhin/proxyme?status.svg)](https://godoc.org/github.com/dblokhin/proxyme)
 [![Docker Pulls](https://img.shields.io/docker/pulls/dblokhin/proxyme)](https://hub.docker.com/r/dblokhin/proxyme)
 [![Docker Image Size](https://img.shields.io/docker/image-size/dblokhin/proxyme)](https://hub.docker.com/r/dblokhin/proxyme)
 
