@@ -119,7 +119,6 @@ func Test_initial(t *testing.T) {
 						},
 					},
 					conn: fakeRWCloser{
-						fnWrite: nil,
 						fnRead: func(p []byte) (n int, err error) {
 							if len(noAuthReq) == 0 {
 								return 0, io.EOF
@@ -131,7 +130,6 @@ func Test_initial(t *testing.T) {
 
 							return n, nil
 						},
-						fnClose: nil,
 					},
 				},
 			},
@@ -146,7 +144,7 @@ func Test_initial(t *testing.T) {
 					return fmt.Errorf("got %v, want = %v", state.methods, []authMethod{typeNoAuth})
 				}
 				if state.method == nil {
-					return fmt.Errorf("got nil auth hanlder")
+					return fmt.Errorf("got nil auth handler")
 				}
 				if state.method.method() != typeNoAuth {
 					return fmt.Errorf("got method %v, want method = %v", state.method.method(), typeNoAuth)

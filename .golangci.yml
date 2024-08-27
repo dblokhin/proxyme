@@ -1,12 +1,6 @@
 linters:
   disable-all: true
   enable:
-    - gosec
-    - gocritic
-    - gocyclo
-    - gofmt
-    - govet
-    - goimports
     - copyloopvar
     - dogsled
     - dupl
@@ -15,8 +9,14 @@ linters:
     - gocheckcompilerdirectives
     - gochecknoinits
     - goconst
+    - gocritic
+    - gocyclo
+    - gofmt
+    - goimports
     - goprintffuncname
+    - gosec
     - gosimple
+    - govet
     - ineffassign
     - lll
     - noctx

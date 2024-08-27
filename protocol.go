@@ -232,7 +232,7 @@ func runConnect(state *state) (transition, error) {
 		rsv:         0,
 		addressType: bndAddrType,
 		addr:        bndAddr.IP,
-		port:        uint16(bndAddr.Port),
+		port:        uint16(bndAddr.Port), // nolint
 	}
 
 	if _, err := reply.WriteTo(state.conn); err != nil {
