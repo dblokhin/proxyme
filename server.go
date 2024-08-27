@@ -185,7 +185,7 @@ func getAuthHandlers(opts Options) (map[authMethod]authHandler, error) {
 	}
 	if opts.GSSAPI != nil {
 		// enable gssapi interface
-		res[typeLogin] = &gssapiAuth{
+		res[typeGSSAPI] = &gssapiAuth{
 			gssapi: opts.GSSAPI,
 		}
 	}
