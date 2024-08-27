@@ -656,3 +656,134 @@ func Test_failCommand(t *testing.T) {
 		})
 	}
 }
+
+func Test_runBind(t *testing.T) {
+	type args struct {
+		state *state
+	}
+	tests := []struct {
+		name    string
+		args    args
+		check   func(*state, transition, error) error
+		wantErr bool
+	}{
+		{
+			name: "no bind",
+			args: args{
+				state: &state{},
+			},
+			check: func(s *state, t transition, err error) error {
+				if err != nil {
+					return fmt.Errorf("unexcepted error: %w", err)
+				}
+				if t == nil {
+					return fmt.Errorf("got nil transition")
+				}
+				if s.status != notAllowed {
+					return fmt.Errorf("got status %d, want %d", s.status, notAllowed)
+				}
+				return nil
+			},
+		},
+		{
+			name: "yes bind",
+			args: args{
+				state: &state{
+					opts: SOCKS5{
+						bind: func() (net.Listener, error) {
+							return nil, nil
+						},
+					},
+				},
+			},
+			check: func(s *state, t transition, err error) error {
+				if err != nil {
+					return fmt.Errorf("unexcepted error: %w", err)
+				}
+				if t == nil {
+					return fmt.Errorf("got nil transition")
+				}
+				if s.status != succeeded {
+					return fmt.Errorf("got status %d, want %d", s.status, succeeded)
+				}
+				return nil
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := runBind(tt.args.state)
+			if err := tt.check(tt.args.state, got, err); err != nil {
+				t.Errorf("runBind() error = %v", err)
+				return
+			}
+		})
+	}
+}
+
+func Test_parseAddress(t *testing.T) {
+	ipv4Addr, _ := net.ResolveTCPAddr("tcp", "192.168.1.1:7777")
+	ipv6Addr, _ := net.ResolveTCPAddr("tcp", "[2001:db8::1]:http")
+	ipv4UDPAddr, _ := net.ResolveUDPAddr("tcp", "192.168.1.1:7777")
+
+	type args struct {
+		addr net.Addr
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    addressType
+		want1   net.IP
+		want2   int
+		wantErr bool
+	}{
+		{
+			name: "non tcp addr",
+			args: args{
+				addr: ipv4UDPAddr,
+			},
+			want:    0,
+			want1:   nil,
+			want2:   0,
+			wantErr: true,
+		},
+		{
+			name: "ipv4",
+			args: args{
+				addr: ipv4Addr,
+			},
+			want:    ipv4,
+			want1:   net.ParseIP("192.168.1.1").To4(),
+			want2:   7777,
+			wantErr: false,
+		},
+		{
+			name: "ipv6",
+			args: args{
+				addr: ipv6Addr,
+			},
+			want:    ipv6,
+			want1:   net.ParseIP("2001:db8::1").To16(),
+			want2:   80,
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, got1, got2, err := parseAddress(tt.args.addr)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("parseAddress() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("parseAddress() got = %v, want %v", got, tt.want)
+			}
+			if !bytes.Equal(got1, tt.want1) {
+				t.Errorf("parseAddress() got1 = %v, want %v", got1, tt.want1)
+			}
+			if got2 != tt.want2 {
+				t.Errorf("parseAddress() got2 = %v, want %v", got2, tt.want2)
+			}
+		})
+	}
+}

@@ -80,7 +80,7 @@ type Options struct {
 	Authenticate func(username, password []byte) error
 
 	// GSSAPI enables GSS-API authentication method.
-	// This func is called whenever new GSSAPI client connects to get an object
+	// This func is wantCalled whenever new GSSAPI client connects to get an object
 	// implementing GSSAPI interface.
 	// OPTIONAL, default disabled.
 	GSSAPI func() (GSSAPI, error)
@@ -218,10 +218,16 @@ func (s SOCKS5) Handle(conn io.ReadWriteCloser, onError func(error)) {
 		conn: conn,
 	}
 
-	for fnState, err := initial(&state); fnState != nil; {
+	fnState, err := initial(&state)
+	for {
 		if err != nil && onError != nil {
 			onError(err)
 		}
+
+		if fnState == nil {
+			break
+		}
+
 		fnState, err = fnState(&state)
 	}
 }

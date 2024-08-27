@@ -217,22 +217,17 @@ func runConnect(state *state) (transition, error) {
 		return failCommand, err
 	}
 
-	bndAddr, ok := conn.LocalAddr().(*net.TCPAddr)
-	if !ok {
-		return nil, fmt.Errorf("failed to get local bnd address")
-	}
-
-	bndAddrType := ipv4
-	if len(bndAddr.IP) == net.IPv6len {
-		bndAddrType = ipv6
+	bndAddrType, bndAddr, bndPort, err := parseAddress(conn.LocalAddr())
+	if err != nil {
+		return nil, fmt.Errorf("local address: %w", err)
 	}
 
 	reply := commandReply{
 		rep:         succeeded,
 		rsv:         0,
 		addressType: bndAddrType,
-		addr:        bndAddr.IP,
-		port:        uint16(bndAddr.Port), // nolint
+		addr:        bndAddr,
+		port:        uint16(bndPort), // nolint
 	}
 
 	if _, err := reply.WriteTo(state.conn); err != nil {
@@ -265,50 +260,38 @@ func failCommand(state *state) (transition, error) {
 	return nil, nil
 }
 
-func parseAddr(addr net.Addr) (net.IP, int, error) {
-	host, port, err := net.SplitHostPort(addr.String())
-	if err != nil {
-		return nil, 0, err
+func parseAddress(addr net.Addr) (addressType, net.IP, int, error) {
+	tcp, ok := addr.(*net.TCPAddr)
+	if !ok {
+		return 0, nil, 0, fmt.Errorf("it is not tcp addr")
 	}
-
-	ip := net.ParseIP(host)
-	if ip == nil {
-		return nil, 0, fmt.Errorf("invalid host %q", host)
+	if len(tcp.IP.To4()) == net.IPv4len {
+		return ipv4, tcp.IP.To4(), tcp.Port, nil
 	}
-
-	p, err := strconv.Atoi(port)
-	if err != nil || p <= 0 || p >= 1<<16 {
-		return nil, 0, fmt.Errorf("invalid port %q", port)
-	}
-
-	return ip, p, nil
+	return ipv6, tcp.IP, tcp.Port, nil
 }
 
 func defaultBind(state *state) (transition, error) {
 	ls, err := state.opts.bind()
 	if err != nil {
 		state.status = sockFailure
-		return failCommand, fmt.Errorf("bind bind: %w", err)
+		return failCommand, fmt.Errorf("bind: %w", err)
 	}
 	defer ls.Close() // nolint
 
-	ip, port, err := parseAddr(ls.Addr())
+	bndAddrType, bndIP, bndPort, err := parseAddress(ls.Addr())
 	if err != nil {
 		state.status = sockFailure
-		return failCommand, fmt.Errorf("bind addr: %w", err)
+		return failCommand, fmt.Errorf("local bnd address: %w", err)
 	}
 
-	addrType := ipv4
-	if len(ip) != net.IPv4len {
-		addrType = ipv6
-	}
 	// send first reply
 	reply := commandReply{
 		rep:         succeeded,
 		rsv:         0,
-		addressType: addrType,
-		addr:        ip,
-		port:        uint16(port), // nolint
+		addressType: bndAddrType,
+		addr:        bndIP,
+		port:        uint16(bndPort), // nolint
 	}
 
 	if _, err := reply.WriteTo(state.conn); err != nil {
@@ -323,19 +306,16 @@ func defaultBind(state *state) (transition, error) {
 	}
 
 	// parse remote addr
-	ip, _, err = parseAddr(conn.RemoteAddr())
+	bndAddrType, bndIP, bndPort, err = parseAddress(conn.RemoteAddr())
 	if err != nil {
 		state.status = sockFailure
-		return failCommand, fmt.Errorf("bind remote addr: %w", err)
+		return failCommand, fmt.Errorf("remote bnd address: %w", err)
 	}
 
-	addrType = ipv4
-	if len(ip) != net.IPv4len {
-		addrType = ipv6
-	}
 	// send second reply (on connect)
-	reply.addressType = addrType
-	reply.addr = ip
+	reply.addressType = bndAddrType
+	reply.addr = bndIP
+	reply.port = uint16(bndPort) // nolint
 
 	if _, err := reply.WriteTo(state.conn); err != nil {
 		return nil, fmt.Errorf("sock write: %w", err)

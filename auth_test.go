@@ -92,33 +92,6 @@ func Test_usernameAuth_method(t *testing.T) {
 	}
 }
 
-func Test_gssapiAuth_method(t *testing.T) {
-	type fields struct {
-		gssapi func() (GSSAPI, error)
-	}
-	tests := []struct {
-		name   string
-		fields fields
-		want   authMethod
-	}{
-		{
-			name:   "common",
-			fields: fields{},
-			want:   1, // rfc1928 gssapi method
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			a := gssapiAuth{
-				gssapi: tt.fields.gssapi,
-			}
-			if got := a.method(); got != tt.want {
-				t.Errorf("method() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
 func Test_usernameAuth_auth(t *testing.T) {
 	username := []byte("xxx")
 	password := []byte("yyy")
@@ -303,6 +276,33 @@ func Test_usernameAuth_auth(t *testing.T) {
 			if err := tt.check(tt.args.conn, got, err); err != nil {
 				t.Errorf("auth() error = %v", err)
 				return
+			}
+		})
+	}
+}
+
+func Test_gssapiAuth_method(t *testing.T) {
+	type fields struct {
+		gssapi func() (GSSAPI, error)
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		want   authMethod
+	}{
+		{
+			name:   "common",
+			fields: fields{},
+			want:   1, // rfc1928 gssapi method
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := gssapiAuth{
+				gssapi: tt.fields.gssapi,
+			}
+			if got := a.method(); got != tt.want {
+				t.Errorf("method() = %v, want %v", got, tt.want)
 			}
 		})
 	}
