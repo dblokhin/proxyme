@@ -59,12 +59,12 @@ const (
 	succeeded           commandStatus = 0
 	sockFailure         commandStatus = 1 // general SOCKS server failure
 	notAllowed          commandStatus = 2 // connection not allowed by ruleset
-	networkUnreachable  commandStatus = 3 // Network unreachable
-	hostUnreachable     commandStatus = 4 // Host unreachable
-	refused             commandStatus = 5 // Connection refused
-	ttlExpired          commandStatus = 6 // TTL expired
-	notSupported        commandStatus = 7 // Command not supported
-	addressNotSupported commandStatus = 8 // Address type not supported
+	networkUnreachable  commandStatus = 3 // network unreachable
+	hostUnreachable     commandStatus = 4 // host unreachable
+	connectionRefused   commandStatus = 5 // connection refused
+	ttlExpired          commandStatus = 6 // ttl expired
+	notSupported        commandStatus = 7 // command not supported
+	addressNotSupported commandStatus = 8 // address type not supported
 )
 
 // SOCKS5 implements SOCKS5 protocol.
@@ -205,7 +205,7 @@ func runConnect(state *state) (transition, error) {
 		case errors.Is(err, ErrHostUnreachable):
 			state.status = hostUnreachable
 		case errors.Is(err, ErrConnectionRefused):
-			state.status = refused
+			state.status = connectionRefused
 		case errors.Is(err, ErrNetworkUnreachable):
 			state.status = networkUnreachable
 		case errors.Is(err, ErrTTLExpired):

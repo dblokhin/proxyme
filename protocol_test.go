@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"reflect"
+	"strconv"
 	"testing"
 )
 
@@ -783,6 +784,362 @@ func Test_parseAddress(t *testing.T) {
 			}
 			if got2 != tt.want2 {
 				t.Errorf("parseAddress() got2 = %v, want %v", got2, tt.want2)
+			}
+		})
+	}
+}
+
+func makeTCPConn() (net.Conn, error) {
+	ls, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		return nil, err
+	}
+	defer ls.Close()
+	go func() {
+		_, _ = ls.Accept()
+	}()
+
+	return net.Dial("tcp", ls.Addr().String())
+}
+func Test_runConnect(t *testing.T) {
+	ipaddr, _ := net.ResolveTCPAddr("tcp", "192.168.1.1:1234")
+
+	validTCPConn, err := makeTCPConn()
+	if err != nil {
+		t.Fatalf("failed to start tcp server: %v", err)
+	}
+
+	resultBuffer := bytes.Buffer{}
+
+	type args struct {
+		state *state
+	}
+	tests := []struct {
+		name  string
+		args  args
+		check func(*state, transition, error) error
+	}{
+		{
+			name: "connect error: not allowed",
+			args: args{
+				state: &state{
+					opts: SOCKS5{
+						connect: func(addressType int, addr []byte, port string) (net.Conn, error) {
+							// check that all params are passed well
+							if addressType != int(ipv4) {
+								return nil, fmt.Errorf("got invalid address type")
+							}
+							if !bytes.Equal(addr, ipaddr.IP.To4()) {
+								return nil, fmt.Errorf("got invalid ip address")
+							}
+							if port != strconv.Itoa(ipaddr.Port) {
+								return nil, fmt.Errorf("got invalid port %q, want %q", port, ipaddr.Port)
+							}
+							return nil, ErrNotAllowed
+						},
+					},
+					conn: nil,
+					command: commandRequest{
+						commandType: connect,
+						addressType: ipv4,
+						addr:        ipaddr.IP.To4(),
+						port:        uint16(ipaddr.Port),
+					},
+				},
+			},
+			check: func(s *state, t transition, err error) error {
+				if !errors.Is(err, ErrNotAllowed) {
+					return fmt.Errorf("unexpected error: %w, want %w", err, ErrNotAllowed)
+				}
+				if t == nil {
+					return fmt.Errorf("got transition nil")
+				}
+				if s.status != notAllowed {
+					return fmt.Errorf("got status %d, want %d", s.status, notAllowed)
+				}
+				return nil
+			},
+		},
+		{
+			name: "connect error: host unreachable",
+			args: args{
+				state: &state{
+					opts: SOCKS5{
+						connect: func(addressType int, addr []byte, port string) (net.Conn, error) {
+							return nil, ErrHostUnreachable
+						},
+					},
+					conn: nil,
+					command: commandRequest{
+						commandType: connect,
+						addressType: ipv4,
+						addr:        ipaddr.IP.To4(),
+						port:        uint16(ipaddr.Port),
+					},
+				},
+			},
+			check: func(s *state, t transition, err error) error {
+				if !errors.Is(err, ErrHostUnreachable) {
+					return fmt.Errorf("unexpected error: %w, want %w", err, ErrHostUnreachable)
+				}
+				if t == nil {
+					return fmt.Errorf("got transition nil")
+				}
+				if s.status != hostUnreachable {
+					return fmt.Errorf("got status %d, want %d", s.status, hostUnreachable)
+				}
+				return nil
+			},
+		},
+		{
+			name: "connect error: connection connectionRefused",
+			args: args{
+				state: &state{
+					opts: SOCKS5{
+						connect: func(addressType int, addr []byte, port string) (net.Conn, error) {
+							return nil, ErrConnectionRefused
+						},
+					},
+					conn: nil,
+					command: commandRequest{
+						commandType: connect,
+						addressType: ipv4,
+						addr:        ipaddr.IP.To4(),
+						port:        uint16(ipaddr.Port),
+					},
+				},
+			},
+			check: func(s *state, t transition, err error) error {
+				if !errors.Is(err, ErrConnectionRefused) {
+					return fmt.Errorf("unexpected error: %w, want: %w", err, ErrConnectionRefused)
+				}
+				if t == nil {
+					return fmt.Errorf("got transition nil")
+				}
+				if s.status != connectionRefused {
+					return fmt.Errorf("got status %d, want %d", s.status, connectionRefused)
+				}
+				return nil
+			},
+		},
+		{
+			name: "connect error: network unreachable",
+			args: args{
+				state: &state{
+					opts: SOCKS5{
+						connect: func(addressType int, addr []byte, port string) (net.Conn, error) {
+							return nil, ErrNetworkUnreachable
+						},
+					},
+					conn: nil,
+					command: commandRequest{
+						commandType: connect,
+						addressType: ipv4,
+						addr:        ipaddr.IP.To4(),
+						port:        uint16(ipaddr.Port),
+					},
+				},
+			},
+			check: func(s *state, t transition, err error) error {
+				if !errors.Is(err, ErrNetworkUnreachable) {
+					return fmt.Errorf("unexpected error: %w, want: %w", err, ErrNetworkUnreachable)
+				}
+				if t == nil {
+					return fmt.Errorf("got transition nil")
+				}
+				if s.status != networkUnreachable {
+					return fmt.Errorf("got status %d, want %d", s.status, networkUnreachable)
+				}
+				return nil
+			},
+		},
+		{
+			name: "connect error: ttl expired",
+			args: args{
+				state: &state{
+					opts: SOCKS5{
+						connect: func(addressType int, addr []byte, port string) (net.Conn, error) {
+							return nil, ErrTTLExpired
+						},
+					},
+					conn: nil,
+					command: commandRequest{
+						commandType: connect,
+						addressType: ipv4,
+						addr:        ipaddr.IP.To4(),
+						port:        uint16(ipaddr.Port),
+					},
+				},
+			},
+			check: func(s *state, t transition, err error) error {
+				if !errors.Is(err, ErrTTLExpired) {
+					return fmt.Errorf("unexpected error: %w, want: %w", err, ErrTTLExpired)
+				}
+				if t == nil {
+					return fmt.Errorf("got transition nil")
+				}
+				if s.status != ttlExpired {
+					return fmt.Errorf("got status %d, want %d", s.status, ttlExpired)
+				}
+				return nil
+			},
+		},
+		{
+			name: "connect error: sock failure",
+			args: args{
+				state: &state{
+					opts: SOCKS5{
+						connect: func(addressType int, addr []byte, port string) (net.Conn, error) {
+							return nil, io.EOF // any other error
+						},
+					},
+					conn: nil,
+					command: commandRequest{
+						commandType: connect,
+						addressType: ipv4,
+						addr:        ipaddr.IP.To4(),
+						port:        uint16(ipaddr.Port),
+					},
+				},
+			},
+			check: func(s *state, t transition, err error) error {
+				if !errors.Is(err, io.EOF) {
+					return fmt.Errorf("unexpected error: %w, want: %w", err, io.EOF)
+				}
+				if t == nil {
+					return fmt.Errorf("got transition nil")
+				}
+				if s.status != sockFailure {
+					return fmt.Errorf("got status %d, want %d", s.status, sockFailure)
+				}
+				return nil
+			},
+		},
+		{
+			name: "non tcp connect",
+			args: args{
+				state: &state{
+					opts: SOCKS5{
+						connect: func(addressType int, addr []byte, port string) (net.Conn, error) {
+							return &net.UDPConn{}, nil
+						},
+					},
+					conn: nil,
+					command: commandRequest{
+						commandType: connect,
+						addressType: ipv4,
+						addr:        ipaddr.IP.To4(),
+						port:        uint16(ipaddr.Port),
+					},
+				},
+			},
+			check: func(s *state, t transition, err error) error {
+				if err == nil {
+					return fmt.Errorf("unexpected error but got nil")
+				}
+				if t != nil {
+					return fmt.Errorf("want transition nil")
+				}
+				return nil
+			},
+		},
+		{
+			name: "reply: network error",
+			args: args{
+				state: &state{
+					opts: SOCKS5{
+						connect: func(addressType int, addr []byte, port string) (net.Conn, error) {
+							return validTCPConn, nil
+						},
+					},
+					conn: fakeRWCloser{
+						fnWrite: func(p []byte) (n int, err error) {
+							return 0, io.EOF
+						},
+					},
+					command: commandRequest{
+						commandType: connect,
+						addressType: ipv4,
+						addr:        ipaddr.IP.To4(),
+						port:        uint16(ipaddr.Port),
+					},
+				},
+			},
+			check: func(s *state, t transition, err error) error {
+				if !errors.Is(err, io.EOF) {
+					return fmt.Errorf("unexpected error: %w, want %w", err, io.EOF)
+				}
+				if t != nil {
+					return fmt.Errorf("want transition nil")
+				}
+				return nil
+			},
+		},
+		{
+			name: "reply success",
+			args: args{
+				state: &state{
+					opts: SOCKS5{
+						connect: func(addressType int, addr []byte, port string) (net.Conn, error) {
+							return validTCPConn, nil
+						},
+					},
+					conn: fakeRWCloser{
+						fnRead: func(p []byte) (n int, err error) {
+							return 0, io.EOF
+						},
+						fnWrite: func(p []byte) (n int, err error) {
+							return resultBuffer.Write(p)
+						},
+						fnClose: func() error {
+							return nil
+						},
+					},
+					command: commandRequest{
+						commandType: connect,
+						addressType: ipv4,
+						addr:        ipaddr.IP.To4(),
+						port:        uint16(ipaddr.Port),
+					},
+				},
+			},
+			check: func(s *state, t transition, err error) error {
+				if err != nil {
+					return fmt.Errorf("unexpected error: %w", err)
+				}
+				if t != nil {
+					return fmt.Errorf("want transition nil")
+				}
+				p := resultBuffer.Bytes()
+				resultBuffer.Reset()
+
+				if p[0] != byte(protoVersion) {
+					return fmt.Errorf("got proto version %d, want %d", p[0], protoVersion)
+				}
+				if p[1] != byte(succeeded) {
+					return fmt.Errorf("got status %d, want %d", p[1], succeeded)
+				}
+				if p[2] != byte(0) {
+					return fmt.Errorf("got rsv %d, want %d", p[2], 0)
+				}
+				if p[3] != byte(ipv4) {
+					return fmt.Errorf("got address type %d, want %d", p[3], ipv4)
+				}
+				ip := p[4:8]
+				localAddr := validTCPConn.(*net.TCPConn).LocalAddr().(*net.TCPAddr)
+				if !bytes.Equal(ip, localAddr.IP.To4()) {
+					return fmt.Errorf("got address %v, want %v", ip, localAddr.IP.To4())
+				}
+				return nil
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := runConnect(tt.args.state)
+			if err := tt.check(tt.args.state, got, err); err != nil {
+				t.Errorf("runConnect() error = %v", err)
+				return
 			}
 		})
 	}
