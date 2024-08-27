@@ -13,10 +13,16 @@ type gssConn struct {
 }
 
 func (g gssConn) Read(p []byte) (int, error) {
-	// from raw conn -> gssapi decode -> encapsulated conn
+	// from raw conn -> gssapi decode -> encapsulated conn -> payload
 	var msg gssapiMessage
 
 	if g.buffer.Len() > 0 {
+		defer func() {
+			if g.buffer.Len() == 0 {
+				g.buffer.Reset()
+			}
+		}()
+
 		return g.buffer.Read(p)
 	}
 
@@ -34,9 +40,7 @@ func (g gssConn) Read(p []byte) (int, error) {
 		return 0, err
 	}
 
-	n := min(len(p), len(payload))
-	copy(p, payload)
-
+	n := copy(p, payload)
 	if n < len(payload) {
 		if _, err := g.buffer.Write(payload[n:]); err != nil {
 			return n, err
@@ -46,14 +50,44 @@ func (g gssConn) Read(p []byte) (int, error) {
 	return n, nil
 }
 
-func (g gssConn) Write(p []byte) (n int, err error) {
-	// from encapsulated conn -> gssapi encode -> raw conn
-	token, err := g.gssapi.Encode(p)
-	if err != nil {
-		return 0, err
+func (g gssConn) Write(p []byte) (int, error) {
+	// payload -> encapsulated conn -> gssapi encode -> raw conn
+	const maxChunkSize = 1<<16 - 5
+
+	var (
+		n     int
+		chunk []byte
+	)
+
+	for len(p) > 0 {
+		bound := min(len(p), maxChunkSize)
+		chunk, p = p[:bound], p[bound:]
+
+		token, err := g.gssapi.Encode(chunk)
+		if err != nil {
+			return n, err
+		}
+
+		msg := gssapiMessage{
+			version:     subnVersion,
+			messageType: gssEncapsulation,
+			token:       token,
+		}
+
+		buf := new(bytes.Buffer)
+		if _, err = msg.WriteTo(buf); err != nil {
+			return n, err
+		}
+
+		nn, err := g.raw.Write(buf.Bytes())
+		n += nn
+
+		if err != nil {
+			return n, err
+		}
 	}
 
-	return g.raw.Write(token)
+	return n, nil
 }
 
 func (g gssConn) Close() error {
