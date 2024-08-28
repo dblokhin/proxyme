@@ -193,7 +193,8 @@ func getAuthHandlers(opts Options) (map[authMethod]authHandler, error) {
 	return res, nil
 }
 
-// Handle initiates and processes the SOCKS5 protocol over the given connection.
+// Handle initiates and processes the SOCKS5 protocol over the given connection. User must close
+// the connection himself.
 // This function manages all stages of the SOCKS5 protocol, including:
 //   - Initial handshake and authentication (if required).
 //   - Handling client commands, such as CONNECT, BIND, and UDP ASSOCIATE.

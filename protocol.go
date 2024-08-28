@@ -87,7 +87,6 @@ type state struct {
 
 type transition func(*state) (transition, error)
 
-// TODO: check all behind protocol behaves just close connection
 // initial starts protocol negotiation
 func initial(state *state) (transition, error) {
 	var msg authRequest
@@ -122,7 +121,7 @@ func failAuth(state *state) (transition, error) {
 	}
 
 	// stop
-	return nil, fmt.Errorf("unsupported authenticate methods: %v", state.methods)
+	return nil, fmt.Errorf("rejected authenticate methods: %v", state.methods)
 }
 
 func authenticate(state *state) (transition, error) {
