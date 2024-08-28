@@ -1144,3 +1144,56 @@ func Test_runConnect(t *testing.T) {
 		})
 	}
 }
+
+func Test_buildDialAddress(t *testing.T) {
+	port := "777"
+	ip4 := "192.168.1.1"
+	ip6 := "2001:db8::1"
+	domain := "google.com"
+
+	type args struct {
+		addressType int
+		addr        []byte
+		port        string
+	}
+	tests := []struct {
+		name string
+		args args
+		want string
+	}{
+		{
+			name: "ipv4",
+			args: args{
+				addressType: int(ipv4),
+				addr:        net.ParseIP(ip4).To4(),
+				port:        port,
+			},
+			want: net.JoinHostPort(ip4, port),
+		},
+		{
+			name: "ipv6",
+			args: args{
+				addressType: int(ipv6),
+				addr:        net.ParseIP(ip6).To16(),
+				port:        port,
+			},
+			want: net.JoinHostPort(ip6, port),
+		},
+		{
+			name: "domain",
+			args: args{
+				addressType: int(domainName),
+				addr:        []byte(domain),
+				port:        port,
+			},
+			want: net.JoinHostPort(domain, port),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := buildDialAddress(tt.args.addressType, tt.args.addr, tt.args.port); got != tt.want {
+				t.Errorf("buildDialAddress() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
