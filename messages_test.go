@@ -503,6 +503,57 @@ func Test_commandRequest_validate(t *testing.T) {
 			},
 		},
 		{
+			name: "invalid address ipv6 type + ip v4",
+			fields: fields{
+				version:     protoVersion,
+				commandType: connect,
+				rsv:         0,
+				addressType: ipv6,
+				addr:        ip.To4(),
+				port:        1080,
+			},
+			check: func(err error) error {
+				if err != nil {
+					return nil
+				}
+				return fmt.Errorf("got nil, want invalid address type error")
+			},
+		},
+		{
+			name: "invalid address ipv4 type + ip nil",
+			fields: fields{
+				version:     protoVersion,
+				commandType: connect,
+				rsv:         0,
+				addressType: ipv4,
+				addr:        nil,
+				port:        1080,
+			},
+			check: func(err error) error {
+				if err != nil {
+					return nil
+				}
+				return fmt.Errorf("got nil, want invalid address type error")
+			},
+		},
+		{
+			name: "invalid address ipv4 type + [3]ip",
+			fields: fields{
+				version:     protoVersion,
+				commandType: connect,
+				rsv:         0,
+				addressType: ipv4,
+				addr:        []byte{1, 2, 3},
+				port:        1080,
+			},
+			check: func(err error) error {
+				if err != nil {
+					return nil
+				}
+				return fmt.Errorf("got nil, want invalid address type error")
+			},
+		},
+		{
 			name: "invalid port",
 			fields: fields{
 				version:     protoVersion,
@@ -843,6 +894,7 @@ func Test_commandReply_WriteTo(t *testing.T) {
 	}
 	tests := []struct {
 		name    string
+		buf     io.ReadWriter
 		fields  fields
 		wantW   []byte
 		wantN   int64
@@ -850,6 +902,7 @@ func Test_commandReply_WriteTo(t *testing.T) {
 	}{
 		{
 			name: "common ipv4",
+			buf:  &bytes.Buffer{},
 			fields: fields{
 				rep:         succeeded,
 				rsv:         0,
@@ -863,6 +916,7 @@ func Test_commandReply_WriteTo(t *testing.T) {
 		},
 		{
 			name: "common ipv6",
+			buf:  &bytes.Buffer{},
 			fields: fields{
 				rep:         notSupported,
 				rsv:         0,
@@ -878,6 +932,7 @@ func Test_commandReply_WriteTo(t *testing.T) {
 		},
 		{
 			name: "common domain",
+			buf:  &bytes.Buffer{},
 			fields: fields{
 				rep:         sockFailure,
 				rsv:         0,
@@ -893,6 +948,28 @@ func Test_commandReply_WriteTo(t *testing.T) {
 		},
 		{
 			name: "invalid domain (big size)",
+			buf:  &bytes.Buffer{},
+			fields: fields{
+				rep:         succeeded,
+				rsv:         0,
+				addressType: domainName,
+				addr:        make([]byte, maxDomainSize+1),
+				port:        uint16(port),
+			},
+			wantW:   nil,
+			wantN:   0,
+			wantErr: true,
+		},
+		{
+			name: "network error",
+			buf: &fakeRWCloser{
+				fnWrite: func(p []byte) (n int, err error) {
+					return 0, io.EOF
+				},
+				fnRead: func(p []byte) (n int, err error) {
+					return 0, io.EOF
+				},
+			},
 			fields: fields{
 				rep:         succeeded,
 				rsv:         0,
@@ -914,13 +991,12 @@ func Test_commandReply_WriteTo(t *testing.T) {
 				addr:        tt.fields.addr,
 				port:        tt.fields.port,
 			}
-			w := &bytes.Buffer{}
-			gotN, err := r.WriteTo(w)
+			gotN, err := r.WriteTo(tt.buf)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("WriteTo() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if gotW := w.Bytes(); !bytes.Equal(gotW, tt.wantW) {
+			if gotW, _ := io.ReadAll(tt.buf); !bytes.Equal(gotW, tt.wantW) {
 				t.Errorf("WriteTo() gotW = %v, want %v", gotW, tt.wantW)
 			}
 			if gotN != tt.wantN {
@@ -944,6 +1020,7 @@ func Test_gssapiMessage_WriteTo(t *testing.T) {
 	}
 	tests := []struct {
 		name    string
+		buf     io.ReadWriter
 		fields  fields
 		wantW   []byte
 		wantN   int64
@@ -951,6 +1028,7 @@ func Test_gssapiMessage_WriteTo(t *testing.T) {
 	}{
 		{
 			name: "common",
+			buf:  &bytes.Buffer{},
 			fields: fields{
 				version:     subnVersion,
 				messageType: gssAuthentication,
@@ -962,10 +1040,30 @@ func Test_gssapiMessage_WriteTo(t *testing.T) {
 		},
 		{
 			name: "invalid token size",
+			buf:  &bytes.Buffer{},
 			fields: fields{
 				version:     subnVersion,
 				messageType: gssAuthentication,
 				token:       make([]byte, maxTokenSize+1), // <<-- too big token
+			},
+			wantW:   nil,
+			wantN:   0,
+			wantErr: true,
+		},
+		{
+			name: "network error",
+			buf: &fakeRWCloser{
+				fnWrite: func(p []byte) (n int, err error) {
+					return 0, io.EOF
+				},
+				fnRead: func(p []byte) (n int, err error) {
+					return 0, io.EOF
+				},
+			},
+			fields: fields{
+				version:     subnVersion,
+				messageType: gssAuthentication,
+				token:       token,
 			},
 			wantW:   nil,
 			wantN:   0,
@@ -979,14 +1077,13 @@ func Test_gssapiMessage_WriteTo(t *testing.T) {
 				messageType: tt.fields.messageType,
 				token:       tt.fields.token,
 			}
-			w := &bytes.Buffer{}
-			gotN, err := m.WriteTo(w)
+			gotN, err := m.WriteTo(tt.buf)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("WriteTo() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if gotW := w.Bytes(); !bytes.Equal(gotW, tt.wantW) {
-				t.Errorf("WriteTo() gotW = %v, want %v", gotW, tt.wantW)
+			if data, _ := io.ReadAll(tt.buf); !bytes.Equal(data, tt.wantW) {
+				t.Errorf("WriteTo() gotW = %v, want %v", data, tt.wantW)
 			}
 			if gotN != tt.wantN {
 				t.Errorf("WriteTo() gotN = %v, want %v", gotN, tt.wantN)
