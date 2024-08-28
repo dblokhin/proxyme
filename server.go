@@ -4,7 +4,6 @@ import (
 	"errors"
 	"io"
 	"net"
-	"time"
 )
 
 // GSSAPI provides contract to implement GSSAPI boilerplate.
@@ -107,17 +106,13 @@ type Options struct {
 	//    o  DOMAINNAME: X'03'    -> addr contains domain name
 	//    o  IP V6 address: X'04' -> addr contains net.IP
 	// OPTIONAL
-	Connect func(addressType int, addr []byte, port string) (net.Conn, error)
+	Connect func(addressType int, addr []byte, port int) (net.Conn, error)
 
-	// Bind returns listener to accept incoming connections for protocol BIND operation:
+	// Listen returns listener to accept incoming connections for protocol BIND operation:
 	// incoming traffic from outside to client sock.
 	// If not specified the SOCKS5 BIND operation will be rejected with notAllowed status.
 	// OPTIONAL.
-	Bind func() (net.Listener, error)
-
-	// MaxConnIdle defines maximum duration for inactive tcp connections.
-	// OPTIONAL, default 3 minutes.
-	MaxConnIdle time.Duration
+	Listen func() (net.Listener, error)
 }
 
 // New creates and returns a new object implemented the SOCKS5 protocol handler configured with the provided options.
@@ -139,14 +134,15 @@ type Options struct {
 //
 // Example:
 //
-//	opts := Options{
-//	    Connect: customConnectHandler,
-//	    Bind:    customBindHandler,
-//	    MaxConnIdle: 10 * time.Minute,
-//	}
-//	socks5, _ := proxyme.New(opts)
-//	clientConn, _ := ls.Accept()
-//	socks5.Handle(clientConn, nil)
+//	 ```
+//		opts := Options{
+//		    Connect: customConnectHandler,
+//		}
+//		socks5, _ := proxyme.New(opts)
+//		ls, _ := net.Listen("tcp", ":1080")
+//		clientConn, _ := ls.Accept()
+//		socks5.Handle(clientConn, nil)
+//	 ```
 //
 // The returned SOCKS5 protocol object can be used to handle incoming TCP connections by calling its Handle method.
 func New(opts Options) (*SOCKS5, error) {
@@ -165,7 +161,7 @@ func New(opts Options) (*SOCKS5, error) {
 
 	return &SOCKS5{
 		auth:    auth,
-		bind:    opts.Bind,
+		listen:  opts.Listen,
 		connect: connectFn,
 	}, nil
 }

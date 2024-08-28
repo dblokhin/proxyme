@@ -669,7 +669,7 @@ func Test_runBind(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "no bind",
+			name: "no listen",
 			args: args{
 				state: &state{},
 			},
@@ -687,11 +687,11 @@ func Test_runBind(t *testing.T) {
 			},
 		},
 		{
-			name: "yes bind",
+			name: "yes listen",
 			args: args{
 				state: &state{
 					opts: SOCKS5{
-						bind: func() (net.Listener, error) {
+						listen: func() (net.Listener, error) {
 							return nil, nil
 						},
 					},
@@ -824,7 +824,7 @@ func Test_runConnect(t *testing.T) {
 			args: args{
 				state: &state{
 					opts: SOCKS5{
-						connect: func(addressType int, addr []byte, port string) (net.Conn, error) {
+						connect: func(addressType int, addr []byte, port int) (net.Conn, error) {
 							// check that all params are passed well
 							if addressType != int(ipv4) {
 								return nil, fmt.Errorf("got invalid address type")
@@ -832,8 +832,8 @@ func Test_runConnect(t *testing.T) {
 							if !bytes.Equal(addr, ipaddr.IP.To4()) {
 								return nil, fmt.Errorf("got invalid ip address")
 							}
-							if port != strconv.Itoa(ipaddr.Port) {
-								return nil, fmt.Errorf("got invalid port %q, want %q", port, ipaddr.Port)
+							if port != ipaddr.Port {
+								return nil, fmt.Errorf("got port %d, want %d", port, ipaddr.Port)
 							}
 							return nil, ErrNotAllowed
 						},
@@ -865,7 +865,7 @@ func Test_runConnect(t *testing.T) {
 			args: args{
 				state: &state{
 					opts: SOCKS5{
-						connect: func(addressType int, addr []byte, port string) (net.Conn, error) {
+						connect: func(addressType int, addr []byte, port int) (net.Conn, error) {
 							return nil, ErrHostUnreachable
 						},
 					},
@@ -896,7 +896,7 @@ func Test_runConnect(t *testing.T) {
 			args: args{
 				state: &state{
 					opts: SOCKS5{
-						connect: func(addressType int, addr []byte, port string) (net.Conn, error) {
+						connect: func(addressType int, addr []byte, port int) (net.Conn, error) {
 							return nil, ErrConnectionRefused
 						},
 					},
@@ -927,7 +927,7 @@ func Test_runConnect(t *testing.T) {
 			args: args{
 				state: &state{
 					opts: SOCKS5{
-						connect: func(addressType int, addr []byte, port string) (net.Conn, error) {
+						connect: func(addressType int, addr []byte, port int) (net.Conn, error) {
 							return nil, ErrNetworkUnreachable
 						},
 					},
@@ -958,7 +958,7 @@ func Test_runConnect(t *testing.T) {
 			args: args{
 				state: &state{
 					opts: SOCKS5{
-						connect: func(addressType int, addr []byte, port string) (net.Conn, error) {
+						connect: func(addressType int, addr []byte, port int) (net.Conn, error) {
 							return nil, ErrTTLExpired
 						},
 					},
@@ -989,7 +989,7 @@ func Test_runConnect(t *testing.T) {
 			args: args{
 				state: &state{
 					opts: SOCKS5{
-						connect: func(addressType int, addr []byte, port string) (net.Conn, error) {
+						connect: func(addressType int, addr []byte, port int) (net.Conn, error) {
 							return nil, io.EOF // any other error
 						},
 					},
@@ -1020,7 +1020,7 @@ func Test_runConnect(t *testing.T) {
 			args: args{
 				state: &state{
 					opts: SOCKS5{
-						connect: func(addressType int, addr []byte, port string) (net.Conn, error) {
+						connect: func(addressType int, addr []byte, port int) (net.Conn, error) {
 							return &net.UDPConn{}, nil
 						},
 					},
@@ -1048,7 +1048,7 @@ func Test_runConnect(t *testing.T) {
 			args: args{
 				state: &state{
 					opts: SOCKS5{
-						connect: func(addressType int, addr []byte, port string) (net.Conn, error) {
+						connect: func(addressType int, addr []byte, port int) (net.Conn, error) {
 							return validTCPConn, nil
 						},
 					},
@@ -1080,7 +1080,7 @@ func Test_runConnect(t *testing.T) {
 			args: args{
 				state: &state{
 					opts: SOCKS5{
-						connect: func(addressType int, addr []byte, port string) (net.Conn, error) {
+						connect: func(addressType int, addr []byte, port int) (net.Conn, error) {
 							return validTCPConn, nil
 						},
 					},
@@ -1146,7 +1146,7 @@ func Test_runConnect(t *testing.T) {
 }
 
 func Test_buildDialAddress(t *testing.T) {
-	port := "777"
+	port := 777
 	ip4 := "192.168.1.1"
 	ip6 := "2001:db8::1"
 	domain := "google.com"
@@ -1154,7 +1154,7 @@ func Test_buildDialAddress(t *testing.T) {
 	type args struct {
 		addressType int
 		addr        []byte
-		port        string
+		port        int
 	}
 	tests := []struct {
 		name string
@@ -1168,7 +1168,7 @@ func Test_buildDialAddress(t *testing.T) {
 				addr:        net.ParseIP(ip4).To4(),
 				port:        port,
 			},
-			want: net.JoinHostPort(ip4, port),
+			want: net.JoinHostPort(ip4, strconv.Itoa(port)),
 		},
 		{
 			name: "ipv6",
@@ -1177,7 +1177,7 @@ func Test_buildDialAddress(t *testing.T) {
 				addr:        net.ParseIP(ip6).To16(),
 				port:        port,
 			},
-			want: net.JoinHostPort(ip6, port),
+			want: net.JoinHostPort(ip6, strconv.Itoa(port)),
 		},
 		{
 			name: "domain",
@@ -1186,7 +1186,7 @@ func Test_buildDialAddress(t *testing.T) {
 				addr:        []byte(domain),
 				port:        port,
 			},
-			want: net.JoinHostPort(domain, port),
+			want: net.JoinHostPort(domain, strconv.Itoa(port)),
 		},
 	}
 	for _, tt := range tests {

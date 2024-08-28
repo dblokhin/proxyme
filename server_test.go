@@ -183,18 +183,18 @@ func TestNew(t *testing.T) {
 				if socks5.connect == nil {
 					return fmt.Errorf("invalid connect callback")
 				}
-				if socks5.bind != nil {
-					return fmt.Errorf("expected nil bind callback")
+				if socks5.listen != nil {
+					return fmt.Errorf("expected nil listen callback")
 				}
 				return nil
 			},
 		},
 		{
-			name: "common case: specify bind",
+			name: "common case: specify listen",
 			args: args{
 				opts: Options{
 					AllowNoAuth: true,
-					Bind: func() (net.Listener, error) {
+					Listen: func() (net.Listener, error) {
 						return nil, nil
 					}},
 			},
@@ -211,8 +211,8 @@ func TestNew(t *testing.T) {
 				if socks5.connect == nil {
 					return fmt.Errorf("invalid connect callback")
 				}
-				if socks5.bind == nil {
-					return fmt.Errorf("invalid bind callback")
+				if socks5.listen == nil {
+					return fmt.Errorf("invalid listen callback")
 				}
 				return nil
 			},
@@ -234,8 +234,8 @@ func TestSOCKS5_Handle(t *testing.T) {
 
 	type fields struct {
 		auth    map[authMethod]authHandler
-		bind    func() (net.Listener, error)
-		connect func(addressType int, addr []byte, port string) (net.Conn, error)
+		listen  func() (net.Listener, error)
+		connect func(addressType int, addr []byte, port int) (net.Conn, error)
 	}
 	type args struct {
 		conn    io.ReadWriteCloser
@@ -275,7 +275,7 @@ func TestSOCKS5_Handle(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			s := SOCKS5{
 				auth:    tt.fields.auth,
-				bind:    tt.fields.bind,
+				listen:  tt.fields.listen,
 				connect: tt.fields.connect,
 			}
 			called = false // initialize

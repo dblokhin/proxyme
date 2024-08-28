@@ -70,8 +70,8 @@ const (
 // SOCKS5 implements SOCKS5 protocol.
 type SOCKS5 struct {
 	auth    map[authMethod]authHandler
-	bind    func() (net.Listener, error) // bind for BIND command
-	connect func(addressType int, addr []byte, port string) (net.Conn, error)
+	listen  func() (net.Listener, error) // listen for BIND command
+	connect func(addressType int, addr []byte, port int) (net.Conn, error)
 }
 
 // state is state through the SOCKS5 protocol negotiations.
@@ -179,7 +179,7 @@ func getCommand(state *state) (transition, error) {
 }
 
 func runBind(state *state) (transition, error) {
-	if state.opts.bind == nil {
+	if state.opts.listen == nil {
 		state.status = notAllowed
 		return failCommand, nil
 	}
@@ -195,7 +195,7 @@ func runConnect(state *state) (transition, error) {
 	// connect
 	addrType := int(state.command.addressType) //nolint
 	addr := state.command.addr
-	port := strconv.Itoa(int(state.command.port))
+	port := int(state.command.port)
 
 	conn, err := state.opts.connect(addrType, addr, port)
 	if err != nil {
@@ -272,10 +272,10 @@ func parseAddress(addr net.Addr) (addressType, net.IP, int, error) {
 }
 
 func defaultBind(state *state) (transition, error) {
-	ls, err := state.opts.bind()
+	ls, err := state.opts.listen()
 	if err != nil {
 		state.status = sockFailure
-		return failCommand, fmt.Errorf("bind: %w", err)
+		return failCommand, fmt.Errorf("listen: %w", err)
 	}
 	defer ls.Close() // nolint
 
@@ -302,7 +302,7 @@ func defaultBind(state *state) (transition, error) {
 	conn, err := ls.Accept()
 	if err != nil {
 		state.status = sockFailure
-		return failCommand, fmt.Errorf("bind accept: %w", err)
+		return failCommand, fmt.Errorf("listen accept: %w", err)
 	}
 
 	// parse remote addr
@@ -326,7 +326,7 @@ func defaultBind(state *state) (transition, error) {
 	return nil, nil
 }
 
-func defaultConnect(addressType int, addr []byte, port string) (net.Conn, error) {
+func defaultConnect(addressType int, addr []byte, port int) (net.Conn, error) {
 	// make connection string for net.Dial
 	address := buildDialAddress(addressType, addr, port)
 
@@ -353,7 +353,7 @@ func defaultConnect(addressType int, addr []byte, port string) (net.Conn, error)
 }
 
 // buildDialAddress returns address in net.Dial format from SOCKS5 details.
-func buildDialAddress(addressType int, addr []byte, port string) string {
+func buildDialAddress(addressType int, addr []byte, port int) string {
 	var host string
 	if addressType != int(domainName) {
 		host = net.IP(addr).String()
@@ -361,7 +361,7 @@ func buildDialAddress(addressType int, addr []byte, port string) string {
 		host = string(addr)
 	}
 
-	return net.JoinHostPort(host, port)
+	return net.JoinHostPort(host, strconv.Itoa(port))
 }
 
 // nolint
