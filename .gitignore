@@ -4,3 +4,4 @@ bin/
 github.com
 golang.org
 gopkg.in
+.env

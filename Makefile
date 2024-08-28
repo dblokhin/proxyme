@@ -1,3 +1,8 @@
+ifneq (,$(wildcard .env))
+    include .env
+    export $(shell sed 's/=.*//' .env)
+endif
+
 GO ?= go
 GOBUILD = $(GO) build
 GOCLEAN = $(GO) clean
@@ -23,5 +28,9 @@ godoc:
 deps:
 	@curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(BIN_DIR) $(GOLANGCI_LINT_VERSION)
 	@go install -v golang.org/x/tools/cmd/godoc@latest
+	@go install github.com/mattn/goveralls@latest
 
-.PHONY: test fmt lint deps
+cover:
+	goveralls
+
+.PHONY: test fmt lint godoc deps cover
