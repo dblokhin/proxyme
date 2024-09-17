@@ -2,10 +2,8 @@
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/dblokhin/proxyme)](https://goreportcard.com/report/github.com/dblokhin/proxyme)
 [![GoDoc](https://godoc.org/github.com/dblokhin/proxyme?status.svg)](https://godoc.org/github.com/dblokhin/proxyme)
-[![Docker Pulls](https://img.shields.io/docker/pulls/dblokhin/proxyme)](https://hub.docker.com/r/dblokhin/proxyme)
-[![Docker Image Size](https://img.shields.io/docker/image-size/dblokhin/proxyme)](https://hub.docker.com/r/dblokhin/proxyme)
 
-This is an efficient and lightweight implementation of a Socks5 Proxy written in pure Go (Golang) without any
+This is an efficient and lightweight implementation of a SOCKS5 Proxy written in pure Go (Golang) without any
 dependencies. The proxy supports key features like CONNECT, BIND, and AUTH (both with and without username/password 
 authentication, and GSSAPI SOCKS5 authentication flow).
 
@@ -21,12 +19,10 @@ with the exception of the UDP ASSOCIATE command, which may be implemented in the
 - **Custom CONNECT**: Allows creating customs tunnels to destination server.
 - **BIND command**: Allows incoming connections on a specified IP and port.
 - **AUTH support**:
-    - No authentication (anonymous access)
-    - Username/Password authentication (rfc1929)
-    - GSSAPI SOCKS5 protocol flow (rfc1961)
-- Custom accept client connection
-- Custom CONNECT command (connect callback)
-- Custom BIND command (bind callback)
+    - No authentication (anonymous access);
+    - Username/Password authentication (rfc1929);
+    - GSSAPI SOCKS5 protocol flow (rfc1961);
+- Custom BIND command (bind callback).
 
 ## Getting Started
 ### Golang package usage
